@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RNTea - Rate Your Healthcare Provider</title>
+    <!-- Tailwind CSS CDN - Not for production use. For local development only. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for responsiveness and aesthetics */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Light blue-gray background */
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh; /* Ensure body takes full viewport height */
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+            width: 100%;
+        }
+        .star-rating .star {
+            cursor: pointer;
+            font-size: 1.5rem;
+            color: #d1d5db; /* Gray star */
+            transition: color 0.2s, transform 0.1s ease-out; /* Added transform for pop effect */
+        }
+        .star-rating .star.filled {
+            color: #fbbf24; /* Amber/Yellow star */
+        }
+        .star-rating .star:hover {
+            transform: scale(1.2); /* Pop effect on hover */
+        }
+        /* Custom scrollbar for lists */
+        .scrollable-list {
+            max-height: 70vh; /* Limit height for scrollability */
+            overflow-y: auto;
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+        .scrollable-list::-webkit-scrollbar {
+            display: none; /* Chrome, Safari, Opera */
+        }
+
+        /* Fade transition for sections */
+        .fade-section {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+        }
+        .fade-section.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Message box animation */
+        .message-box-fade {
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        .message-box-fade.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+    <!-- Header Section -->
+    <header class="bg-gradient-to-r from-green-700 to-teal-600 text-white p-4 shadow-lg">
+        <div class="container flex items-center justify-between">
+            <!-- RNT branding with hover effect -->
+           <a href="RNTea Home.html" class="text-3xl font-bold rounded-lg px-3 py-1 bg-white text-green-800 shadow-md transform hover:scale-105 transition-transform duration-200">
+                <h1>RNTea</h1>
+            </a>
+            <nav>
+                <ul class="flex space-x-6">
+                    <li><a href="RNTea Home.html" class="hover:text-teal-200 transition-colors duration-200 hover:scale-105 transform">HOME </a></li>
+                    <li><a href="RNTea About.html" class="hover:text-teal-200 transition-colors duration-200 hover:scale-105 transform">ABOUT</a></li>
+                    <li><a href="RNTea Contact.html" class="hover:text-teal-200 transition-colors duration-200 hover:scale-105 transform">CONTACT US</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow container py-8">
+        <!-- Hospital Selection Section -->
+        <div id="hospitalSelectionSection" class="bg-white p-6 rounded-lg shadow-xl mb-8 fade-section active">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-3">Select a Hospital</h2>
+            <div class="mb-4">
+                <input type="text" id="hospitalSearchInput" placeholder="Search hospitals..."
+                       class="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-200 shadow-sm">
+            </div>
+            <div id="hospitalList" class="scrollable-list">
+                <!-- Hospital cards will be injected here by JavaScript -->
+                <p class="text-gray-500 text-center py-4">Loading hospitals...</p>
+            </div>
+        </div>
+
+        <!-- Doctor Selection Section (Hidden by default) -->
+        <div id="doctorSelectionSection" class="bg-white p-6 rounded-lg shadow-xl mb-8 fade-section hidden">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-3">
+                Select a Doctor at <span id="currentHospitalName" class="text-green-600"></span>
+            </h2>
+            <button id="backToHospitalsBtn" class="mb-4 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors duration-200 transform hover:scale-105">
+                &larr; Back to Hospitals
+            </button>
+            <div class="mb-4">
+                <input type="text" id="doctorSearchInput" placeholder="Search doctors by name or specialty..."
+                       class="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-200 shadow-sm">
+            </div>
+            <div id="doctorList" class="scrollable-list">
+                <!-- Doctor cards will be injected here by JavaScript -->
+                <p class="text-gray-500 text-center py-4">Loading doctors...</p>
+            </div>
+        </div>
+
+        <!-- Doctor Details and Rating Form Section (Hidden by default) -->
+        <div id="doctorDetailsSection" class="bg-white p-6 rounded-lg shadow-xl hidden fade-section">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-3">
+                Doctor Details & Ratings for <span id="currentDoctorName" class="text-green-600"></span>
+            </h2>
+            <button id="backToDoctorsBtn" class="mb-4 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors duration-200 transform hover:scale-105">
+                &larr; Back to Doctor List
+            </button>
+
+            <div id="doctorDetailContent">
+                <p class="text-green-600 mb-2" id="detailSpecialty"></p>
+                <p class="text-gray-700 mb-4" id="detailLocation"></p>
+
+                <div class="flex items-center mb-4">
+                    <span class="text-gray-600 mr-2">Overall Rating:</span>
+                    <div id="detailOverallRatingStars" class="flex">
+                        <!-- Stars will be generated here -->
+                    </div>
+                    <span class="ml-2 text-gray-700 font-medium" id="detailRatingCount"></span>
+                </div>
+
+                <h4 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">Reviews</h4>
+                <div id="reviewsList" class="space-y-4 max-h-60 overflow-y-auto pr-2 mb-6">
+                    <!-- Reviews will be injected here by JavaScript -->
+                    <p id="noReviewsMessage" class="text-gray-500 italic hidden">No reviews yet. Be the first to rate this doctor!</p>
+                </div>
+
+                <!-- The form for submitting ratings has been removed as per your request -->
+                <div id="messageBox" class="mt-4 p-3 rounded-md hidden message-box-fade">
+                    <!-- Success/Error messages will appear here -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer Section -->
+    <footer class="bg-gray-800 text-white p-4 text-center mt-8 shadow-inner">
+        <div class="container text-sm">
+            <p>&copy; 2025 RNTea. All rights reserved.</p>
+            <p class="mt-2 text-gray-400">Disclaimer: This is a demo for rating healthcare providers. Always consult with a medical professional for advice.</p>
+        </div>
+    </footer>
+
+    <!-- Firebase SDKs and Initialization -->
+    <script type="module">
+        // Import necessary Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.0.0/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.0.0/firebase-auth.js";
+        // Removed arrayUnion import as comment submission is removed from this page.
+        import { getFirestore, collection, doc, getDocs, getDoc, setDoc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore.js";
+
+        // IMPORTANT: Firebase Configuration - REPLACE WITH YOUR ACTUAL CONFIG
+        const firebaseConfig = {
+            apiKey: "AIzaSyBEwSVX9UY7-MNxeYwdbY0ZmDuXzYyt56g",
+            authDomain: "rntea-cca78.firebaseapp.com",
+            projectId: "rntea-cca78",
+            storageBucket: "rntea-cca78.firebasestorage.app",
+            messagingSenderId: "806310857835",
+            appId: "1:806310857835:web:68f7dccb581c85a4fe352e",
+            measurementId: "G-CEM5KQNZCG"
+        };
+
+
+        // This 'appId' is specific to the Canvas environment for data isolation.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId;
+
+        let app, db, auth;
+        let userId = ''; // To store the current authenticated user's ID
+
+        // Initialize Firebase services and authenticate the user
+        async function initializeFirebaseAndAuthenticate() {
+            try {
+                // Initialize Firebase app with your configuration
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                console.log("Firebase app initialized successfully.");
+
+                // Attempt to sign in: prioritize custom token from environment, then anonymous
+                console.log("Checking for __initial_auth_token:", typeof __initial_auth_token !== 'undefined' ? "present" : "not present");
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    try {
+                        const userCredential = await signInWithCustomToken(auth, __initial_auth_token);
+                        userId = userCredential.user.uid;
+                        console.log("Signed in with custom token:", userId);
+                    } catch (customTokenError) {
+                        console.error("Error signing in with custom token, falling back to anonymous:", customTokenError);
+                        const userCredential = await signInAnonymously(auth);
+                        userId = userCredential.user.uid;
+                        console.log("Signed in anonymously (after custom token fallback):", userId);
+                    }
+                } else {
+                    const userCredential = await signInAnonymously(auth);
+                    userId = userCredential.user.uid;
+                    console.log("Signed in anonymously:", userId);
+                }
+
+                // Make Firebase objects and user ID globally accessible for the main script
+                window.app = app;
+                window.db = db;
+                window.auth = auth;
+                window.userId = userId;
+                window.appId = appId;
+
+                // ALSO make Firestore functions globally accessible to the second script
+                window.collection = collection;
+                window.doc = doc;
+                window.getDocs = getDocs;
+                window.getDoc = getDoc;
+                window.setDoc = setDoc;
+                window.updateDoc = updateDoc;
+                // Removed arrayUnion from global exposure
+                window.query = query;
+                window.where = where;
+
+
+                console.log("Firebase authentication complete. Current User ID:", window.userId);
+
+                // Set up an authentication state change listener (optional, but good practice)
+                auth.onAuthStateChanged(user => {
+                    if (user) {
+                        window.userId = user.uid; // Update global userId if state changes (e.g., re-authentication)
+                        console.log("Auth state changed, userId:", window.userId);
+                    } else {
+                        window.userId = ''; // User logged out or unauthenticated
+                        console.log("Auth state changed, user logged out.");
+                    }
+                });
+
+            } catch (error) {
+                console.error("Firebase Initialization or Authentication Error:", error);
+                // Set global Firebase objects to null to indicate a failure
+                window.app = null;
+                window.db = null;
+                window.auth = null;
+                window.userId = null;
+                window.appId = null;
+                // Inform the main script that initialization failed
+                document.dispatchEvent(new CustomEvent('firebaseInitialized', { detail: { success: false, error: error } }));
+            } finally {
+                 // Dispatch an event regardless of success/failure so DOMContentLoaded can proceed
+                 document.dispatchEvent(new CustomEvent('firebaseInitialized', { detail: { success: true } }));
+            }
+        }
+
+        // Call the initialization function immediately
+        initializeFirebaseAndAuthenticate();
+    </script>
+
+    <!-- Main Application Logic (relies on Firebase being initialized) -->
+    <script>
+        // Global variable to hold fetched hospital data.
+        // Doctors will now be fetched on demand and added to the 'doctors' array
+        // of the specific hospital object when selected.
+        let hospitals = [];
+
+        // Variables to track currently selected hospital and doctor
+        let selectedHospitalId = null;
+        let selectedDoctorId = null;
+
+        // --- Get DOM Elements ---
+        const hospitalSelectionSection = document.getElementById('hospitalSelectionSection');
+        const hospitalSearchInput = document.getElementById('hospitalSearchInput');
+        const hospitalListDiv = document.getElementById('hospitalList');
+
+        const doctorSelectionSection = document.getElementById('doctorSelectionSection');
+        const currentHospitalName = document.getElementById('currentHospitalName');
+        const backToHospitalsBtn = document.getElementById('backToHospitalsBtn');
+        const doctorSearchInput = document.getElementById('doctorSearchInput');
+        const doctorListDiv = document.getElementById('doctorList');
+
+        const doctorDetailsSection = document.getElementById('doctorDetailsSection');
+        const currentDoctorName = document.getElementById('currentDoctorName');
+        const backToDoctorsBtn = document.getElementById('backToDoctorsBtn');
+        const detailSpecialty = document.getElementById('detailSpecialty');
+        const detailLocation = document.getElementById('detailLocation');
+        const detailOverallRatingStars = document.getElementById('detailOverallRatingStars');
+        const detailRatingCount = document.getElementById('detailRatingCount');
+        const reviewsList = document.getElementById('reviewsList');
+        const noReviewsMessage = document.getElementById('noReviewsMessage');
+        const messageBox = document.getElementById('messageBox');
+
+
+        // --- Helper Functions ---
+
+        /**
+         * Calculates the average rating for a given array of ratings.
+         * @param {Array<Object>} ratings - An array of rating objects, each with a 'stars' property.
+         * @returns {string} The average rating formatted to one decimal place, or '0' if no ratings.
+         */
+        function calculateAverageRating(ratings) {
+            if (!ratings || ratings.length === 0) return '0';
+            const totalStars = ratings.reduce((sum, r) => sum + r.stars, 0);
+            return (totalStars / ratings.length).toFixed(1);
+        }
+
+        /**
+         * Renders star icons into a given container based on a rating value.
+         * @param {HTMLElement} container - The DOM element to render stars into.
+         * @param {number} rating - The numerical rating to display (e.g., 3.5).
+         * @param {number} maxStars - The total number of stars to display (default is 5).
+         */
+        function renderStars(container, rating, maxStars = 5) {
+            container.innerHTML = ''; // Clear existing stars
+            const fullStars = Math.floor(rating);
+            const partialStarValue = rating % 1;
+
+            for (let i = 0; i < fullStars; i++) {
+                const starSpan = document.createElement('span');
+                starSpan.className = 'text-yellow-400 text-xl';
+                starSpan.innerHTML = '&#9733;';
+                container.appendChild(starSpan);
+            }
+
+            if (partialStarValue > 0) {
+                const starSpan = document.createElement('span');
+                starSpan.className = 'text-yellow-200 text-xl';
+                starSpan.innerHTML = '&#9733;';
+                container.appendChild(starSpan);
+            }
+
+            const starsRendered = fullStars + (partialStarValue > 0 ? 1 : 0);
+            for (let i = 0; i < (maxStars - starsRendered); i++) {
+                const starSpan = document.createElement('span');
+                starSpan.className = 'text-gray-300 text-xl';
+                starSpan.innerHTML = '&#9733;';
+                container.appendChild(starSpan);
+            }
+        }
+
+
+        /**
+         * Displays a message in the message box, styling it as success or error.
+         * @param {string} message - The message text to display.
+         * @param {'success'|'error'} type - The type of message ('success' or 'error').
+         */
+        function showMessageBox(message, type) {
+            messageBox.textContent = message;
+            messageBox.classList.remove('hidden', 'bg-green-100', 'text-green-700', 'bg-red-100', 'text-red-700');
+            messageBox.classList.remove('show');
+
+            if (type === 'success') {
+                messageBox.classList.add('bg-green-100', 'text-green-700');
+            } else if (type === 'error') {
+                messageBox.classList.add('bg-red-100', 'text-red-700');
+            }
+            messageBox.classList.add('show');
+            messageBox.classList.remove('hidden');
+
+            setTimeout(() => {
+                messageBox.classList.remove('show');
+                messageBox.addEventListener('transitionend', function handler() {
+                    messageBox.classList.add('hidden');
+                    messageBox.removeEventListener('transitionend', handler);
+                }, { once: true });
+            }, 5000);
+        }
+
+        // --- Rendering Functions ---
+
+        /**
+         * Renders the list of hospitals based on an optional search term.
+         * Hospitals are fetched initially without their doctors.
+         * @param {string} [searchTerm=''] - The search term to filter hospitals.
+         */
+        function renderHospitalList(searchTerm = '') {
+            hospitalListDiv.innerHTML = ''; // Clear current list
+            const lowerCaseSearchTerm = searchTerm.toLowerCase();
+
+            const filteredHospitals = hospitals.filter(hospital =>
+                hospital.name.toLowerCase().includes(lowerCaseSearchTerm) ||
+                hospital.location.toLowerCase().includes(lowerCaseSearchTerm)
+            );
+
+            if (filteredHospitals.length === 0) {
+                hospitalListDiv.innerHTML = '<p class="text-gray-500 text-center py-4">No hospitals found matching your search.</p>';
+                return;
+            }
+
+            filteredHospitals.forEach(hospital => {
+                const hospitalCard = document.createElement('div');
+                hospitalCard.className = 'bg-gray-50 p-4 mb-3 rounded-lg shadow-sm hover:bg-green-50 transition-all duration-200 cursor-pointer border border-gray-200 transform hover:scale-[1.02]';
+                hospitalCard.innerHTML = `
+                    <h3 class="text-lg font-semibold text-gray-800">${hospital.name}</h3>
+                    <p class="text-gray-500 text-sm">${hospital.location}</p>
+                `;
+                // When a hospital card is clicked, call selectHospital
+                hospitalCard.addEventListener('click', () => selectHospital(hospital.id));
+                hospitalListDiv.appendChild(hospitalCard);
+            });
+        }
+
+        /**
+         * Renders the list of doctors for the currently selected hospital, filtered by search term.
+         * This function now expects the 'doctors' array on the 'currentHospital' object to be populated.
+         * @param {string} [searchTerm=''] - The search term to filter doctors.
+         */
+        function renderDoctorList(searchTerm = '') {
+            doctorListDiv.innerHTML = ''; // Clear current list
+            const currentHospital = hospitals.find(h => h.id === selectedHospitalId);
+
+            // Check if doctors are available for the selected hospital (they should be after fetchDoctorsForHospital)
+            if (!currentHospital || !currentHospital.doctors || currentHospital.doctors.length === 0) {
+                doctorListDiv.innerHTML = '<p class="text-gray-500 text-center py-4">No doctors found for this hospital.</p>';
+                return;
+            }
+
+            const lowerCaseSearchTerm = searchTerm.toLowerCase();
+            const filteredDoctors = currentHospital.doctors.filter(doctor =>
+                doctor.name.toLowerCase().includes(lowerCaseSearchTerm) ||
+                doctor.specialty.toLowerCase().includes(lowerCaseSearchTerm)
+            );
+
+            if (filteredDoctors.length === 0) {
+                doctorListDiv.innerHTML = '<p class="text-gray-500 text-center py-4">No doctors match your search in this hospital.</p>';
+                return;
+            }
+
+            filteredDoctors.forEach(doctor => {
+                const avgRating = calculateAverageRating(doctor.ratings);
+                const ratingText = doctor.ratings.length > 0 ? `${avgRating} (${doctor.ratings.length} reviews)` : 'No ratings yet';
+
+                const doctorCard = document.createElement('div');
+                doctorCard.className = 'bg-gray-50 p-4 mb-3 rounded-lg shadow-sm hover:bg-green-50 transition-all duration-200 cursor-pointer border border-gray-200 transform hover:scale-[1.02]';
+                doctorCard.innerHTML = `
+                    <h3 class="text-lg font-semibold text-gray-800">${doctor.name}</h3>
+                    <p class="text-green-600 text-sm">${doctor.specialty}</p>
+                    <div class="flex items-center text-sm mt-2">
+                        <span class="mr-1 text-yellow-500">&#9733;</span> ${ratingText}
+                    </div>
+                `;
+                doctorCard.addEventListener('click', () => selectDoctor(doctor.id));
+                doctorListDiv.appendChild(doctorCard);
+            });
+        }
+
+        // --- State Management Functions ---
+
+        /**
+         * Transitions between different application sections with a fade effect.
+         * @param {HTMLElement} showSection - The section to make visible.
+         * @param {HTMLElement} hide1 - The first section to hide.
+         * @param {HTMLElement} hide2 - The second section to hide.
+         */
+        function transitionSections(showSection, hide1, hide2) {
+            hide1.classList.remove('active');
+            hide2.classList.remove('active');
+            hide1.classList.add('hidden');
+            hide2.classList.add('hidden');
+
+            setTimeout(() => {
+                showSection.classList.remove('hidden');
+                showSection.classList.add('active');
+            }, 100);
+        }
+
+        /**
+         * Handles the selection of a hospital, transitioning to the doctor selection view.
+         * NEW: This function now fetches doctors on demand for the selected hospital.
+         * @param {string} id - The ID of the selected hospital.
+         */
+        async function selectHospital(id) { // MADE ASYNC to await doctor fetching
+            selectedHospitalId = id;
+            selectedDoctorId = null; // Reset doctor selection when changing hospitals
+            const hospital = hospitals.find(h => h.id === id); // Find the selected hospital in our loaded list
+
+            if (hospital) {
+                // First, transition the UI to the doctor selection section
+                transitionSections(doctorSelectionSection, hospitalSelectionSection, doctorDetailsSection);
+                currentHospitalName.textContent = hospital.name; // Display the hospital's name
+                doctorSearchInput.value = ''; // Clear any previous doctor search input
+
+                // Show a loading message while doctors are being fetched
+                doctorListDiv.innerHTML = '<p class="text-gray-500 text-center py-4">Loading doctors...</p>';
+
+                // Now, fetch doctors dynamically for this specific hospital
+                try {
+                    const doctors = await fetchDoctorsForHospital(hospital.id); // Call the new function to get doctors
+
+                    // IMPORTANT: Find the exact hospital object in our global 'hospitals' array
+                    // and update its 'doctors' property with the newly fetched doctors.
+                    const hospitalIndex = hospitals.findIndex(h => h.id === hospital.id);
+                    if (hospitalIndex !== -1) {
+                        hospitals[hospitalIndex].doctors = doctors;
+                    }
+
+                    renderDoctorList(); // Now render the list of doctors for the selected hospital
+                } catch (error) {
+                    console.error("Error fetching doctors for selected hospital:", error);
+                    doctorListDiv.innerHTML = '<p class="text-red-500 text-center py-4">Failed to load doctors for this hospital.</p>';
+                }
+            }
+        }
+
+        /**
+         * Handles the selection of a doctor, transitioning to their details and rating form view.
+         * This function remains largely the same as doctors are now assumed to be loaded into
+         * the selected hospital's 'doctors' array.
+         * @param {string} id - The ID of the selected doctor.
+         */
+        async function selectDoctor(id) { // MADE ASYNC to re-fetch doctor data after review submission
+            selectedDoctorId = id;
+            const currentHospital = hospitals.find(h => h.id === selectedHospitalId);
+            
+            // --- MODIFIED: Correctly reference the doctor document as a subcollection ---
+            // Build the path to the specific doctor document:
+            // artifacts/{appId}/public/data/hospitals/{hospitalId}/doctors/{doctorId}
+            const doctorRef = window.doc(
+                window.db,
+                "artifacts", window.appId,
+                "public", "data",
+                "hospitals", selectedHospitalId,
+                "doctors", selectedDoctorId
+            );
+            // --- END MODIFIED ---
+
+            const doctorDoc = await window.getDoc(doctorRef);
+            const doctor = doctorDoc.exists() ? { id: doctorDoc.id, ...doctorDoc.data() } : null;
+
+            if (doctor) {
+                transitionSections(doctorDetailsSection, hospitalSelectionSection, doctorSelectionSection);
+
+                currentDoctorName.textContent = doctor.name;
+                detailSpecialty.textContent = doctor.specialty;
+                detailLocation.textContent = currentHospital.location;
+
+                const avgRating = calculateAverageRating(doctor.ratings);
+                renderStars(detailOverallRatingStars, avgRating);
+                detailRatingCount.textContent = `(${doctor.ratings.length} reviews)`;
+
+                reviewsList.innerHTML = '';
+                if (!doctor.ratings || doctor.ratings.length === 0) {
+                    noReviewsMessage.classList.remove('hidden');
+                } else {
+                    noReviewsMessage.classList.add('hidden');
+                    doctor.ratings.forEach(review => {
+                        const reviewItem = document.createElement('div');
+                        reviewItem.className = 'bg-gray-50 p-3 mb-2 rounded-md border border-gray-200'; // Added mb-2 for spacing
+
+                        const reviewStarsContainer = document.createElement('div');
+                        reviewStarsContainer.className = 'flex mb-1';
+                        renderStars(reviewStarsContainer, review.stars, 5); // Render stars for individual review
+                        reviewItem.appendChild(reviewStarsContainer);
+
+                        const commentParagraph = document.createElement('p');
+                        commentParagraph.className = 'text-gray-800 text-sm';
+                        commentParagraph.textContent = review.comment || 'No comment provided.';
+                        reviewItem.appendChild(commentParagraph);
+
+                        const dateSpan = document.createElement('span');
+                        dateSpan.className = 'text-xs text-gray-500 mt-1 block';
+                        // Format the date for display
+                        const reviewDate = review.date ? new Date(review.date).toLocaleDateString() : 'N/A';
+                        dateSpan.textContent = `Reviewed on: ${reviewDate}`;
+                        reviewItem.appendChild(dateSpan);
+
+                        // --- NEW: Display existing nested comments ---
+                        if (review.comments && review.comments.length > 0) {
+                            const commentsContainer = document.createElement('div');
+                            commentsContainer.className = 'mt-3 pt-3 border-t border-gray-100 space-y-2';
+
+                            review.comments.forEach(comment => {
+                                const commentDiv = document.createElement('div');
+                                commentDiv.className = 'bg-gray-100 p-2 rounded-md';
+
+                                const commentText = document.createElement('p');
+                                commentText.className = 'text-gray-700 text-xs';
+                                commentText.textContent = comment.text;
+                                commentDiv.appendChild(commentText);
+
+                                const commentDate = document.createElement('span');
+                                commentDate.className = 'text-gray-500 text-xs mt-1 block';
+                                const commentTimestamp = comment.date ? new Date(comment.date).toLocaleDateString() : 'N/A';
+                                commentDate.textContent = `Commented on: ${commentTimestamp}`;
+                                commentDiv.appendChild(commentDate);
+
+                                commentsContainer.appendChild(commentDiv);
+                            });
+                            reviewItem.appendChild(commentsContainer);
+                        }
+                        // --- END NEW: Display existing nested comments ---
+
+                        reviewsList.appendChild(reviewItem);
+                    });
+                }
+
+                messageBox.classList.add('hidden');
+                messageBox.classList.remove('bg-green-100', 'text-green-700', 'bg-red-100', 'text-red-700');
+            }
+        }
+
+        // --- Firestore Operations ---
+
+        /**
+         * Fetches hospital data from Firestore.
+         * MODIFIED: This function now only fetches the top-level hospital documents.
+         * It no longer attempts to fetch doctors in subcollections to improve initial load speed.
+         * Updates the global 'hospitals' array and renders the hospital list.
+         */
+        async function fetchHospitals() {
+            if (!window.db || !window.auth || !window.userId || !window.collection || !window.getDocs) {
+                console.error("Firebase is not fully initialized or authenticated, or Firestore functions are missing. Cannot fetch hospitals.");
+                hospitalListDiv.innerHTML = '<p class="text-red-500 text-center py-4">Application initialization failed. Please check console for Firebase errors.</p>';
+                showMessageBox('Failed to load hospitals due to initialization issues. Check console.', 'error');
+                return;
+            }
+            console.log("Firebase initialized and authenticated. Attempting to fetch hospitals...");
+
+            hospitalListDiv.innerHTML = '<p class="text-gray-500 text-center py-4">Loading hospitals...</p>';
+
+            try {
+                // Fetch all hospital documents from the top-level 'hospitals' collection
+                const hospitalsCollectionRef = window.collection(window.db, `artifacts/${window.appId}/public/data/hospitals`);
+                const hospitalDocsSnapshot = await window.getDocs(hospitalsCollectionRef);
+
+                // Map hospital documents to an array. Each hospital will initially have an empty 'doctors' array.
+                // Doctors will be populated into this array only when a hospital is selected.
+                hospitals = hospitalDocsSnapshot.docs.map(docSnapshot => ({
+                    id: docSnapshot.id,
+                    ...docSnapshot.data(),
+                    doctors: [] // Initialize doctors as an empty array; they will be populated on demand
+                }));
+
+                renderHospitalList(); // Render the UI with the newly fetched hospital data
+                console.log("Hospitals fetched successfully (without doctors).", hospitals);
+
+            } // Catch block handles errors during fetch
+            catch (error) {
+                console.error("Error fetching hospitals:", error);
+                hospitalListDiv.innerHTML = '<p class="text-red-500 text-center py-4">Failed to load hospitals.</p>';
+                showMessageBox('Failed to load hospitals. Try again.', 'error');
+            }
+        }
+
+        /**
+         * NEW FUNCTION: Fetches doctors for a specific hospital from the top-level 'doctors' collection.
+         * This uses a Firestore query to filter doctors by their 'hospitalId' field.
+         * This function is called only when a user selects a hospital.
+         * @param {string} hospitalId - The ID of the hospital whose doctors are to be fetched.
+         * @returns {Promise<Array<Object>>} An array of doctor objects. Returns empty array on error.
+         */
+        async function fetchDoctorsForHospital(hospitalId) {
+            // Ensure Firebase is initialized and necessary Firestore functions are available
+            if (!window.db || !window.collection || !window.getDocs) {
+                console.error("Firestore is not fully initialized or required functions are missing. Cannot fetch doctors.");
+                return [];
+            }
+
+            try {
+                // --- MODIFIED: Correctly reference the doctors subcollection ---
+                // This builds the path: artifacts/{appId}/public/data/hospitals/{hospitalId}/doctors
+                const doctorsCollectionRef = window.collection(
+                    window.db,
+                    "artifacts", window.appId,
+                    "public", "data",
+                    "hospitals", hospitalId,
+                    "doctors"
+                );
+
+                // --- ADDED DEBUG LOG ---
+                console.log("DEBUG: Attempting to fetch doctors from path:", doctorsCollectionRef.path);
+                // --- END DEBUG LOG ---
+
+                // No need for a 'where' clause now, as we are directly targeting the subcollection.
+                const doctorDocsSnapshot = await window.getDocs(doctorsCollectionRef);
+
+                const doctors = [];
+                // Iterate through the results and add each doctor's data to the array
+                doctorDocsSnapshot.forEach(doc => {
+                    doctors.push({ id: doc.id, ...doc.data() }); // Include document ID as 'id' property
+                });
+                console.log(`Fetched ${doctors.length} doctors for hospital ${hospitalId}`);
+                return doctors; // Return the array of fetched doctors
+            } // Catch block handles any errors during this fetch operation
+            catch (error) {
+                console.error(`Error fetching doctors for hospital ${hospitalId}:`, error);
+                showMessageBox(`Failed to load doctors for this hospital.`, 'error');
+                return []; // Return an empty array on error to prevent further issues
+            }
+        }
+
+        // --- Event Listeners ---
+
+        // Hospital search input listener
+        hospitalSearchInput.addEventListener('input', (e) => {
+            renderHospitalList(e.target.value);
+        });
+
+        // Doctor search input listener
+        doctorSearchInput.addEventListener('input', (e) => {
+            renderDoctorList(e.target.value);
+        });
+
+        // Back buttons
+        backToHospitalsBtn.addEventListener('click', () => {
+            selectedHospitalId = null; // Clear selected hospital
+            selectedDoctorId = null; // Clear selected doctor
+            transitionSections(hospitalSelectionSection, doctorSelectionSection, doctorDetailsSection);
+            hospitalSearchInput.value = ''; // Clear hospital search
+            renderHospitalList(); // Re-render initial hospital list
+        });
+
+        backToDoctorsBtn.addEventListener('click', () => {
+            selectedDoctorId = null; // Clear selected doctor
+            transitionSections(doctorSelectionSection, hospitalSelectionSection, doctorDetailsSection);
+            doctorSearchInput.value = ''; // Clear doctor search
+            renderDoctorList(); // Re-render doctor list for the current hospital
+        });
+
+        // IMPORTANT: Call fetchHospitals() only after Firebase has been fully initialized
+        // This event listener ensures that Firebase (window.db, window.auth, etc.) is ready
+        // before attempting any Firestore operations.
+        document.addEventListener('firebaseInitialized', (e) => {
+            if (e.detail.success) {
+                console.log("Firebase fully initialized, starting hospital fetch.");
+                fetchHospitals(); // Initiate the fetching of hospitals
+            } else {
+                console.error("Firebase failed to initialize, cannot fetch initial data.");
+                hospitalListDiv.innerHTML = '<p class="text-red-500 text-center py-4">Application failed to start due to Firebase errors. Please check the console.</p>';
+            }
+        });
+    </script>
+</body>
+</html>

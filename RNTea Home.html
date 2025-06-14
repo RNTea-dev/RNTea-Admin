@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RNTea - Your Healthcare Rating Hub</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for responsiveness and aesthetics */
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            margin: 0;
+            /* Static background image with no opacity */
+            background-image: url('https://images.unsplash.com/photo-1602595688238-9fffe12d5af3?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D');
+            background-size: cover; /* Ensures the image covers the whole body */
+            background-position: center; /* Centers the image */
+            background-repeat: no-repeat; /* Prevents image repetition */
+            background-color: #f0f4f8; /* Fallback background color */
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+            width: 100%;
+        }
+
+        /* General Fade-in for main content section */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeInTransform 0.8s ease-out forwards;
+        }
+        @keyframes fadeInTransform {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Specific animations for elements */
+        .fade-in-up {
+            opacity: 0;
+            transform: translateY(30px);
+            animation: fadeInUp 1s ease-out forwards;
+        }
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .scale-in {
+            opacity: 0;
+            transform: scale(0.9);
+            animation: scaleIn 0.8s ease-out forwards;
+        }
+        @keyframes scaleIn {
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        /* Animation Delays */
+        .delay-200ms { animation-delay: 0.2s; }
+        .delay-400ms { animation-delay: 0.4s; }
+        .delay-600ms { animation-delay: 0.6s; }
+        .delay-800ms { animation-delay: 0.8s; }
+        .delay-1000ms { animation-delay: 1s; }
+        .delay-1200ms { animation-delay: 1.2s; }
+        .delay-1400ms { animation-delay: 1.4s; }
+
+
+        /* Button Hover Effect (Ripple-like) */
+        .button-hover-effect {
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+        }
+        .button-hover-effect::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.2); /* Lighter ripple */
+            border-radius: 50%;
+            transition: width 0.4s ease-out, height 0.4s ease-out, top 0.4s ease-out, left 0.4s ease-out;
+            transform: translate(-50%, -50%);
+            z-index: -1;
+        }
+        .button-hover-effect:hover::before {
+            width: 200%;
+            height: 200%;
+        }
+
+        /* Specific text colors from the logo concept (if you use these elsewhere) */
+        .text-rntea-rn { color: #1A5276; /* Dark Teal Blue */ }
+        .text-rntea-tea { color: #4CAF50; /* Medium Green */ }
+
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <!-- Header -->
+    <header class="bg-gradient-to-r from-green-700 to-teal-600 text-white p-4 shadow-lg z-20 relative">
+        <div class="container flex items-center justify-between">
+            <!-- RNTea text only, without SVG logo -->
+            <h1 class="text-3xl font-bold rounded-lg px-3 py-1 bg-white text-green-800 shadow-md transform hover:scale-105 transition-transform duration-200">RNTea</h1>
+            <nav>
+                <ul class="flex space-x-6">
+                    <!-- Navigation links -->
+                    <li><a href="RNTea Query View.html" class="hover:text-teal-200 transition-colors duration-200 hover:scale-105 transform font-semibold">REVIEWS</a></li>
+                    <li><a href="RNTea About.html" class="hover:text-teal-200 transition-colors duration-200 hover:scale-105 transform font-semibold">ABOUT</a></li>
+                     <li><a href="RNTea Contact.html" class="hover:text-teal-200 transition-colors duration-200 hover:scale-105 transform font-semibold">CONTACT US</a></li>
+                    <!-- Removed LOGIN and SIGN UP links -->
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content - Homepage Options -->
+    <main class="flex-grow flex items-center justify-center p-4 relative">
+        <!-- Removed Background Overlay for "Feel" -->
+        <div class="text-center bg-white p-10 rounded-2xl shadow-2xl max-w-2xl w-full
+                    transform hover:shadow-3xl transition-shadow duration-300 ease-in-out
+                    fade-in delay-200ms z-10 relative">
+            <h2 class="text-4xl font-extrabold text-gray-800 mb-10 leading-tight
+                       fade-in-up delay-400ms">
+                Welcome to <span class="text-green-700">RN</span>Tea: Rate, Navigate, Trust
+                <br class="hidden sm:block"> <!-- Line break for larger screens -->
+                <span class="text-green-800 text-xl sm:text-2xl font-semibold block mt-4 sm:mt-6 pt-2 px-4 border-t-2 border-black mx-auto max-w-lg">
+                    Do you really trust your Doctors? Let's hear from experienced RNs for a change.
+                </span>
+            </h2>
+            
+            <div class="flex flex-col sm:flex-row space-y-6 sm:space-y-0 sm:space-x-8 justify-center">
+                <a href="RNTea Query.html" class="block w-full sm:w-auto">
+                    <button class="w-full px-8 py-5 bg-green-700 text-white text-xl font-semibold rounded-xl
+                                   shadow-lg hover:bg-green-800 transition-all duration-300 transform hover:scale-105
+                                   focus:outline-none focus:ring-4 focus:ring-green-400
+                                   button-hover-effect scale-in delay-1000ms">
+                        RN
+                    </button>
+                </a>
+                <a href="RNTea Query View.html" class="block w-full sm:w-auto">
+                    <button class="w-full px-8 py-5 bg-teal-600 text-white text-xl font-semibold rounded-xl
+                                   shadow-lg hover:bg-teal-700 transition-all duration-300 transform hover:scale-105
+                                   focus:outline-none focus:ring-4 focus:ring-teal-300
+                                   button-hover-effect scale-in delay-1200ms">
+                        REVIEWS
+                    </button>
+                </a>
+            </div>
+
+            <p class="text-sm text-gray-500 mt-12 fade-in-up delay-1400ms">
+                RNs! We do not share identity of the individual leaving the review. 
+            </p>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white p-4 text-center mt-8 shadow-inner">
+        <div class="container text-sm">
+            <p>&copy; 2025 RNTea. All rights reserved.</p>
+            <p class="mt-2 text-gray-400">Disclaimer: This is a demo. Always consult with a medical professional for advice.</p>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RNTea Admin Panel</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Optional: Basic styling for responsiveness and aesthetics */
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            background-color: #f0f4f8; /* Light background */
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+            width: 100%;
+        }
+        /* Styles for message box fade-in/out */
+        .message-box-fade {
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        .message-box-fade.show {
+            opacity: 1;
+        }
+    </style>
+
+    <!-- React and ReactDOM CDNs -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel CDN for JSX transformation in browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Firebase SDKs - Using compat versions as per original code structure -->
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore-compat.js"></script>
+
+</head>
+<body>
+    <div id="root">
+        <!-- Your React app will be mounted here -->
+        <p className="text-center text-gray-500 py-8">Loading admin panel...</p>
+    </div>
+
+    <!-- Link to your external React App code -->
+    <script type="text/babel" src="./App.js"></script>
+</body>
+</html>

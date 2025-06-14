@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About RNTea - Empowering Healthcare Choices</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom Font */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* Lightest blue-gray background */
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            overflow-x: hidden; /* Prevent horizontal scroll from animations */
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+            width: 100%;
+        }
+
+        /* --- Keyframe Animations --- */
+
+        /* Fade-in from bottom */
+        @keyframes fadeInSlideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Scale-in for images/cards */
+        @keyframes scaleIn {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        /* Border pulse for buttons/interactive elements */
+        @keyframes pulseBorder {
+            0% {
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); /* Tailwind green-500 */
+            }
+            70% {
+                box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+            }
+        }
+
+        /* Ripple effect for buttons */
+        @keyframes ripple {
+            0% {
+                transform: scale(0);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(2);
+                opacity: 0;
+            }
+        }
+        .ripple-effect {
+            position: relative;
+            overflow: hidden;
+            transform: translate3d(0, 0, 0);
+        }
+        .ripple-effect:after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            background: rgba(255, 255, 255, 0.5); /* White ripple */
+            opacity: 0;
+            pointer-events: none;
+            border-radius: 50%;
+            transform: scale(0);
+            transition: transform 0.5s ease-out, opacity 0.5s ease-out;
+        }
+        .ripple-effect:active:after {
+            transform: scale(2);
+            opacity: 1;
+            transition: 0s;
+        }
+
+
+        /* Text slide-in (for headings) */
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* Section Specific Animations */
+        .animated-section > * {
+            animation: fadeInSlideUp 0.8s ease-out forwards;
+            opacity: 0; /* Start hidden */
+        }
+        /* Delay subsequent elements */
+        .animated-section > *:nth-child(2) { animation-delay: 0.2s; }
+        .animated-section > *:nth-child(3) { animation-delay: 0.4s; }
+        .animated-section > *:nth-child(4) { animation-delay: 0.6s; }
+        .animated-section > *:nth-child(5) { animation-delay: 0.8s; }
+        .animated-section > *:nth-child(6) { animation-delay: 1.0s; }
+        .animated-section .animated-img {
+            animation: scaleIn 1s ease-out forwards;
+            opacity: 0;
+            transform: scale(0.95);
+        }
+        .animated-section .animated-text {
+            animation: slideInLeft 0.8s ease-out forwards;
+            opacity: 0;
+        }
+
+        .cta-button {
+            animation: pulseBorder 2s infinite ease-out;
+        }
+
+        /* --- Hover Effects for Sections --- */
+        section {
+            transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
+        }
+
+        section:hover {
+            transform: translateY(-5px); /* Lift effect */
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15); /* More pronounced shadow */
+        }
+
+        /* Specific adjustments for sections that have backgrounds already */
+        section.bg-gradient-to-br:hover,
+        section.bg-gradient-to-r:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2); /* Slightly darker shadow for gradient backgrounds */
+        }
+
+        /* Hover for cards within sections (e.g., Why Choose Us, Team) */
+        .grid > div {
+            transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
+        }
+
+        .grid > div:hover {
+            transform: translateY(-3px) scale(1.01); /* Lift and slight scale */
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+    <!-- Header Section -->
+    <header class="bg-gradient-to-r from-green-700 to-teal-600 text-white p-4 shadow-lg">
+        <div class="container flex items-center justify-between">
+            <a href="RNTea Home.html" class="text-3xl font-bold rounded-lg px-3 py-1 bg-white text-green-800 shadow-md transform hover:scale-105 transition-transform duration-200 ripple-effect">
+                <h1>RNTea</h1>
+            </a>
+            <nav>
+                <ul class="flex space-x-6">
+                    <li><a href="RNTea Home.html" class="hover:text-teal-200 transition-colors duration-200 hover:scale-105 transform">Home</a></li>
+                    <li><a href="RNTea Query.html" class="hover:text-teal-200 transition-colors duration-200 hover:scale-105 transform font-bold">REVIEWS</a></li>
+                    <li><a href="#" class="hover:text-teal-200 transition-colors duration-200 hover:scale-105 transform">Contact</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow">
+        <!-- Hero Section -->
+        <section class="relative bg-gradient-to-br from-blue-50 to-blue-200 py-20 px-4 text-center overflow-hidden">
+            <div class="container animated-section flex flex-col items-center justify-center min-h-[50vh]">
+                <h1 class="text-5xl md:text-6xl font-extrabold text-gray-900 mb-6 animated-text">
+                    Empowering Your <span class="text-teal-600">Healthcare Choices</span>
+                </h1>
+                <p class="text-lg md:text-xl text-gray-700 max-w-3xl mb-8 animated-text" style="animation-delay: 0.3s;">
+                    At RNTea, we believe in transparency and community to help you find the best care.
+                    Discover insights, share experiences, and make informed decisions with confidence.
+                </p>
+                <img src="https://placehold.co/800x450/4ade80/FFFFFF?text=Diverse+Women+in+Healthcare+Tech" alt="Diverse women collaborating in healthcare tech"
+                     class="mt-8 rounded-xl shadow-2xl w-full max-w-4xl h-auto animated-img" style="animation-delay: 0.6s;">
+            </div>
+        </section>
+
+        <!-- Our Mission Section -->
+        <section class="py-16 px-4 bg-white">
+            <div class="container flex flex-col md:flex-row items-center gap-10 animated-section">
+                <div class="md:w-1/2">
+                    <img src="https://placehold.co/600x400/818cf8/FFFFFF?text=Woman+Doctor+Consulting" alt="Woman doctor consulting with patient"
+                         class="rounded-xl shadow-lg w-full h-auto animated-img" style="animation-delay: 0.1s;">
+                </div>
+                <div class="md:w-1/2 text-center md:text-left">
+                    <h2 class="text-4xl font-bold text-gray-800 mb-6 animated-text" style="animation-delay: 0.3s;">Our Mission: Clarity, Compassion, Community</h2>
+                    <p class="text-lg text-gray-600 mb-4 animated-text" style="animation-delay: 0.5s;">
+                        We are a team driven by the vision of a healthier, more informed world. Our platform is built on the pillars of **transparency, user-centric design, and reliable information**. We aim to empower individuals to navigate the complexities of healthcare with ease and confidence.
+                    </p>
+                    <p class="text-lg text-gray-600 animated-text" style="animation-delay: 0.7s;">
+                        RNTea provides a trusted space where real patient experiences contribute to a collective wisdom, guiding others towards optimal care.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Why Choose Us / Our Values Section -->
+        <section class="py-16 px-4 bg-gray-50">
+            <div class="container animated-section text-center">
+                <h2 class="text-4xl font-bold text-gray-800 mb-12 animated-text">Why Choose RNTea? Our Core Values</h2>
+                <div class="grid md:grid-cols-3 gap-8">
+                    <div class="bg-white p-6 rounded-lg shadow-md flex flex-col items-center text-center animated-section" style="animation-delay: 0.1s;">
+                        <div class="text-teal-500 mb-4 text-5xl">💡</div> <!-- Lightbulb emoji -->
+                        <h3 class="text-xl font-semibold text-gray-800 mb-3">Empowering Insights</h3>
+                        <p class="text-gray-600">Access verified reviews and comprehensive information to make the best decisions for your health.</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md flex flex-col items-center text-center animated-section" style="animation-delay: 0.3s;">
+                        <div class="text-purple-500 mb-4 text-5xl">🤝</div> <!-- Handshake emoji -->
+                        <h3 class="text-xl font-semibold text-gray-800 mb-3">Vibrant Community</h3>
+                        <p class="text-gray-600">Join a network of individuals sharing valuable experiences, fostering a supportive environment.</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md flex flex-col items-center text-center animated-section" style="animation-delay: 0.5s;">
+                        <div class="text-yellow-500 mb-4 text-5xl">✨</div> <!-- Sparkle emoji -->
+                        <h3 class="text-xl font-semibold text-gray-800 mb-3">Unwavering Integrity</h3>
+                        <p class="text-gray-600">We maintain strict standards for review authenticity, ensuring trustworthy and unbiased information.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- The Team Section (Focus on diverse female leadership/expertise) -->
+        <section class="py-16 px-4 bg-blue-50">
+            <div class="container animated-section text-center">
+                <h2 class="text-4xl font-bold text-gray-800 mb-12 animated-text">Meet Our Visionary Team</h2>
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-10">
+                    <div class="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center animated-section" style="animation-delay: 0.1s;">
+                        <img src="https://placehold.co/150x150/60a5fa/FFFFFF?text=Dr.+Elara+Khan" alt="Dr. Elara Khan"
+                             class="w-32 h-32 rounded-full object-cover mb-4 border-4 border-teal-400 animated-img">
+                        <h3 class="text-2xl font-semibold text-gray-800">Dr. Elara Khan</h3>
+                        <p class="text-teal-600 font-medium mb-2">Founder & CEO</p>
+                        <p class="text-gray-600 text-center">A passionate advocate for patient rights and healthcare accessibility, Dr. Khan leads RNTea with a commitment to innovation.</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center animated-section" style="animation-delay: 0.3s;">
+                        <img src="https://placehold.co/150x150/d8b4fe/FFFFFF?text=Ms.+Lena+Chen" alt="Ms. Lena Chen"
+                             class="w-32 h-32 rounded-full object-cover mb-4 border-4 border-purple-400 animated-img">
+                        <h3 class="text-2xl font-semibold text-gray-800">Ms. Lena Chen</h3>
+                        <p class="text-purple-600 font-medium mb-2">Chief Technology Officer</p>
+                        <p class="text-gray-600 text-center">Lena, a tech visionary, crafts intuitive and secure platforms, ensuring RNTea is always at the forefront of digital healthcare solutions.</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center animated-section" style="animation-delay: 0.5s;">
+                        <img src="https://placehold.co/150x150/fde047/FFFFFF?text=Ms.+Sophia+Ross" alt="Ms. Sophia Ross"
+                             class="w-32 h-32 rounded-full object-cover mb-4 border-4 border-yellow-400 animated-img">
+                        <h3 class="text-2xl font-semibold text-gray-800">Ms. Sophia Ross</h3>
+                        <p class="text-yellow-600 font-medium mb-2">Head of Community Engagement</p>
+                        <p class="text-gray-600 text-center">Sophia fosters our thriving community, ensuring every voice is heard and every experience contributes to our shared knowledge.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Call to Action Section -->
+        <section class="py-16 px-4 bg-gradient-to-r from-green-600 to-teal-500 text-white text-center">
+            <div class="container animated-section">
+                <h2 class="text-4xl font-bold mb-6 animated-text">Join the Movement for Better Healthcare</h2>
+                <p class="text-xl mb-8 max-w-3xl mx-auto animated-text" style="animation-delay: 0.3s;">
+                    Your voice matters. Contribute to a community that's building a more transparent and trustworthy healthcare system for everyone.
+                </p>
+                <a href="#"
+                   class="inline-block bg-white text-green-700 font-bold py-4 px-8 rounded-full text-lg shadow-xl hover:bg-gray-100 transform hover:scale-105 transition-all duration-300 cta-button ripple-effect" style="animation-delay: 0.6s;">
+                    Start Exploring Today!
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer Section -->
+    <footer class="bg-gray-800 text-white p-8 text-center mt-auto shadow-inner">
+        <div class="container text-sm">
+            <p>&copy; 2025 RNTea. All rights reserved.</p>
+            <p class="mt-2 text-gray-400">Committed to transparency and informed healthcare choices.</p>
+        </div>
+    </footer>
+</body>
+</html>
