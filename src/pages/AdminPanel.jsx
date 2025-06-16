@@ -5,16 +5,21 @@ import { FirebaseContext } from '../App.jsx'; // Import FirebaseContext from the
 import MessageBox from '../components/MessageBox.jsx'; // Ensure MessageBox is imported with .jsx extension
 import ConfirmModal from '../components/ConfirmModal.jsx'; // Import ConfirmModal with .jsx extension
 
+// Import specific Firebase Auth functions
+import {
+    signInWithEmailAndPassword, // Import the modular function
+    signOut // Import the modular function
+} from 'firebase/auth';
+
 // AdminPanel now consumes FirebaseContext for all its Firebase operations
 const AdminPanel = () => {
     const {
         db,
-        auth, // auth is needed for signInWithEmailAndPassword, signOut
+        auth, // auth is the auth instance, needed for signInWithEmailAndPassword, signOut
         userId,
         appId,
         loadingFirebase, // This indicates if Firebase is globally initialized
-        showMessage,
-        // message is no longer directly accessed from context, as showMessage handles it
+        // Removed showMessage from context consumption, as AdminPanel will use its local one.
         collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, arrayUnion
     } = useContext(FirebaseContext);
 
@@ -26,6 +31,7 @@ const AdminPanel = () => {
     const [selectedHospital, setSelectedHospital] = useState(null);
     const [selectedDoctor, setSelectedDoctor] = useState(null);
     const [loading, setLoading] = useState(false); // Local loading for admin panel operations
+    const [message, setMessage] = useState({ text: '', type: '' }); // Local message state for AdminPanel
     const [showConfirm, setShowConfirm] = useState(false);
     const [confirmAction, setConfirmAction] = useState(null);
 
@@ -34,17 +40,25 @@ const AdminPanel = () => {
     const [loginPassword, setLoginPassword] = useState('');
     const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false); // Admin login status for this panel
 
+
     // State for UI elements
     const [showAddHospitalForm, setShowAddHospitalForm] = useState(false);
     const [hospitalSearchTerm, setHospitalSearchTerm] = useState('');
     const [doctorSearchTerm, setDoctorSearchTerm] = useState('');
 
 
+    // Callback for displaying transient messages (success/error) locally within AdminPanel
+    const showAdminMessage = useCallback((text, type) => {
+        setMessage({ text, type });
+        setTimeout(() => setMessage({ text: '', type: '' }), 5000);
+    }, []);
+
     // Function to check if the authenticated user is an admin
     const checkAdminStatus = useCallback(async (uid, dbInstance) => {
         if (!dbInstance || !appId) {
             console.error("[AdminAuthCheck] Firestore instance or appId not provided. Cannot check admin status.");
-            return false;
+            showAdminMessage('Firebase database not ready for admin check. Please try refreshing.', 'error');
+            return false; // Return false on error
         }
         try {
             const adminDocRef = doc(dbInstance, `artifacts/${appId}/admins`, uid);
@@ -52,32 +66,16 @@ const AdminPanel = () => {
             return adminDocSnap.exists();
         } catch (error) {
             console.error("[AdminStatus] Error checking admin status:", error);
-            if (showMessage) showMessage(`Error verifying admin status: ${error.message}.`, 'error');
+            showAdminMessage(`Error verifying admin status: ${error.message}.`, 'error');
             return false;
         }
-    }, [appId, doc, getDoc, showMessage]);
-
-    // Effect to check admin status on auth state change (from main App.jsx)
-    useEffect(() => {
-        if (auth && db && userId && !loadingFirebase) {
-            // Check admin status when the global userId from context becomes available
-            checkAdminStatus(userId, db).then(isAdmin => {
-                setIsAdminLoggedIn(isAdmin);
-                if (!isAdmin) {
-                    if (showMessage) showMessage('Access Denied: Not authorized as an administrator.', 'error');
-                } else {
-                    // If admin, proceed to fetch hospitals
-                    fetchHospitals();
-                }
-            });
-        }
-    }, [auth, db, userId, loadingFirebase, checkAdminStatus, fetchHospitals, showMessage]);
-
+    }, [appId, doc, getDoc, showAdminMessage]);
 
     // Callback for fetching all hospitals from Firestore
-    const fetchHospitals = useCallback(async () => {
-        // Only fetch if Firebase is ready and admin is logged in
-        if (!db || !appId || !isAdminLoggedIn) {
+    // Now accepts `isUserAdmin` directly to avoid dependency on `isAdminLoggedIn` state
+    const fetchHospitals = useCallback(async (isUserAdmin) => {
+        // Only fetch if Firebase is ready and the user is confirmed admin
+        if (!db || !appId || !isUserAdmin) {
             return;
         }
         setLoading(true); // Start loading state
@@ -86,20 +84,44 @@ const AdminPanel = () => {
             const hospitalDocsSnapshot = await getDocs(hospitalsCollectionRef);
             const fetchedHospitals = hospitalDocsSnapshot.docs.map(document => ({ id: document.id, ...document.data() }));
             setHospitals(fetchedHospitals);
-            if (showMessage) showMessage('Hospitals loaded successfully!', 'success');
+            showAdminMessage('Hospitals loaded successfully!', 'success');
         } catch (error) {
             console.error("Error fetching hospitals from Firestore:", error);
-            if (showMessage) showMessage(`Error loading hospitals: ${error.message}`, 'error');
+            showAdminMessage(`Error loading hospitals: ${error.message}`, 'error');
         } finally {
             setLoading(false);
         }
-    }, [db, appId, collection, getDocs, isAdminLoggedIn, showMessage]);
+    }, [db, appId, collection, getDocs, showAdminMessage]); // isAdminLoggedIn removed from dependencies
+
+
+    // Effect to check admin status on auth state change (from main App.jsx)
+    // IMPORTANT: fetchHospitals is passed as a dependency now because it's called conditionally
+    useEffect(() => {
+        if (auth && db && userId && !loadingFirebase) {
+            checkAdminStatus(userId, db).then(isAdmin => {
+                setIsAdminLoggedIn(isAdmin);
+                if (isAdmin) {
+                    // If admin, proceed to fetch hospitals directly, passing isAdmin
+                    fetchHospitals(isAdmin); // Pass isAdmin to the function
+                } else {
+                    // Clear data if not admin
+                    setHospitals([]);
+                    setDoctors([]);
+                    setReviews([]);
+                    setSelectedHospital(null);
+                    setSelectedDoctor(null);
+                    setActiveSection('hospitals');
+                    showAdminMessage('Access Denied: Not authorized as an administrator.', 'error'); // Show message here
+                }
+            });
+        }
+    }, [auth, db, userId, loadingFirebase, checkAdminStatus, fetchHospitals, showAdminMessage]);
 
 
     // Callback for fetching doctors for a specific hospital
     const fetchDoctors = useCallback(async (hospitalId) => {
         if (!db || !appId || !isAdminLoggedIn) {
-            if (showMessage) showMessage("Authorization required to fetch doctors. Please login.", 'error');
+            showAdminMessage("Authorization required to fetch doctors. Please login.", 'error');
             return;
         }
         setLoading(true);
@@ -108,19 +130,19 @@ const AdminPanel = () => {
             const doctorSnapshot = await getDocs(doctorsColRef);
             const fetchedDoctors = doctorSnapshot.docs.map(document => ({ id: document.id, ...document.data() }));
             setDoctors(fetchedDoctors);
-            if (showMessage) showMessage(`Doctors for ${selectedHospital?.name || 'selected hospital'} loaded successfully!`, 'success');
+            showAdminMessage(`Doctors for ${selectedHospital?.name || 'selected hospital'} loaded successfully!`, 'success');
         } catch (error) {
             console.error("Error fetching doctors:", error);
-            if (showMessage) showMessage(`Error loading doctors: ${error.message}`, 'error');
+            showAdminMessage(`Error loading doctors: ${error.message}`, 'error');
         } finally {
             setLoading(false);
         }
-    }, [db, appId, collection, getDocs, isAdminLoggedIn, selectedHospital, showMessage]);
+    }, [db, appId, collection, getDocs, isAdminLoggedIn, selectedHospital, showAdminMessage]);
 
     // Callback for fetching reviews for a specific doctor
     const fetchReviews = useCallback(async (hospitalId, doctorId) => {
         if (!db || !appId || !isAdminLoggedIn) {
-            if (showMessage) showMessage("Authorization required to fetch reviews. Please login.", 'error');
+            showAdminMessage("Authorization required to fetch reviews. Please login.", 'error');
             return;
         }
         setLoading(true);
@@ -134,28 +156,28 @@ const AdminPanel = () => {
                     comments: review.comments || []
                 }));
                 setReviews(reviewsWithComments);
-                if (showMessage) showMessage(`Reviews for ${selectedDoctor?.name || 'selected doctor'} loaded successfully!`, 'success');
+                showAdminMessage(`Reviews for ${selectedDoctor?.name || 'selected doctor'} loaded successfully!`, 'success');
             } else {
                 setReviews([]);
-                if (showMessage) showMessage('Doctor not found, no reviews to display.', 'error');
+                showAdminMessage('Doctor not found, no reviews to display.', 'error');
             }
         } catch (error) {
             console.error("Error fetching reviews:", error);
-            if (showMessage) showMessage(`Error loading reviews: ${error.message}`, 'error');
+            showAdminMessage(`Error loading reviews: ${error.message}`, 'error');
         } finally {
             setLoading(false);
         }
-    }, [db, appId, doc, getDoc, isAdminLoggedIn, selectedDoctor, showMessage]);
+    }, [db, appId, doc, getDoc, isAdminLoggedIn, selectedDoctor, showAdminMessage]);
 
 
     // --- Hospital Management Functions ---
     const handleAddHospital = async (e) => {
         e.preventDefault();
-        if (!db || !appId || !isAdminLoggedIn) { if (showMessage) showMessage("Not authorized. Please login.", 'error'); return; }
+        if (!db || !appId || !isAdminLoggedIn) { showAdminMessage("Not authorized. Please login.", 'error'); return; }
         const form = e.target;
         const name = form.name.value.trim();
         const location = form.location.value.trim();
-        if (!name || !location) { if (showMessage) showMessage("Please fill all fields for hospital.", 'error'); return; }
+        if (!name || !location) { showAdminMessage("Please fill all fields for hospital.", 'error'); return; }
 
         setLoading(true);
         try {
@@ -166,28 +188,28 @@ const AdminPanel = () => {
             await setDoc(dummyDoctorRef, { _placeholder: true });
             await deleteDoc(dummyDoctorRef);
 
-            if (showMessage) showMessage('Hospital added successfully!', 'success');
+            showAdminMessage('Hospital added successfully!', 'success');
             form.reset();
-            fetchHospitals();
+            fetchHospitals(true); // Pass true since we are admin
         } catch (error) {
             console.error("Error adding hospital:", error);
-            if (showMessage) showMessage(`Error adding hospital: ${error.message}.`, 'error');
+            showAdminMessage(`Error adding hospital: ${error.message}.`, 'error');
         } finally {
             setLoading(false);
         }
     };
 
     const handleEditHospital = async (id, newName, newLocation) => {
-        if (!db || !appId || !isAdminLoggedIn) { if (showMessage) showMessage("Not authorized. Please login.", 'error'); return; }
+        if (!db || !appId || !isAdminLoggedIn) { showAdminMessage("Not authorized. Please login.", 'error'); return; }
         setLoading(true);
         try {
             const hospitalDocRef = doc(db, `artifacts/${appId}/public/data/hospitals`, id);
             await updateDoc(hospitalDocRef, { name: newName.trim(), location: newLocation.trim() });
-            if (showMessage) showMessage('Hospital updated successfully!', 'success');
-            fetchHospitals();
+            showAdminMessage('Hospital updated successfully!', 'success');
+            fetchHospitals(true); // Pass true since we are admin
         } catch (error) {
             console.error("Error updating hospital:", error);
-            if (showMessage) showMessage(`Error updating hospital: ${error.message}.`, 'error');
+            showAdminMessage(`Error updating hospital: ${error.message}.`, 'error');
         } finally {
             setLoading(false);
         }
@@ -196,7 +218,7 @@ const AdminPanel = () => {
     const handleDeleteHospital = (hospitalId) => {
         setShowConfirm(true);
         setConfirmAction(() => async () => {
-            if (!db || !appId || !isAdminLoggedIn) { if (showMessage) showMessage("Not authorized. Please login.", 'error'); return; }
+            if (!db || !appId || !isAdminLoggedIn) { showAdminMessage("Not authorized. Please login.", 'error'); return; }
             setLoading(true);
             try {
                 const doctorsToDeleteSnapshot = await getDocs(collection(db, `artifacts/${appId}/public/data/hospitals/${hospitalId}/doctors`));
@@ -205,11 +227,11 @@ const AdminPanel = () => {
                 }
                 const hospitalDocRef = doc(db, `artifacts/${appId}/public/data/hospitals`, hospitalId);
                 await deleteDoc(hospitalDocRef);
-                if (showMessage) showMessage('Hospital and its doctors deleted successfully!', 'success');
-                fetchHospitals();
+                showAdminMessage('Hospital and its doctors deleted successfully!', 'success');
+                fetchHospitals(true); // Pass true since we are admin
             } catch (error) {
                 console.error("Error deleting hospital:", error);
-                if (showMessage) showMessage(`Error deleting hospital: ${error.message}.`, 'error');
+                showAdminMessage(`Error deleting hospital: ${error.message}.`, 'error');
             } finally {
                 setLoading(false);
                 setShowConfirm(false);
@@ -221,7 +243,7 @@ const AdminPanel = () => {
     const handleRemoveDuplicateHospitals = () => {
         setShowConfirm(true);
         setConfirmAction(() => async () => {
-            if (!db || !appId || !isAdminLoggedIn) { if (showMessage) showMessage("Not authorized. Please login.", 'error'); return; }
+            if (!db || !appId || !isAdminLoggedIn) { showAdminMessage("Not authorized. Please login.", 'error'); return; }
             setLoading(true);
             try {
                 const hospitalsColRef = collection(db, `artifacts/${appId}/public/data/hospitals`);
@@ -241,9 +263,9 @@ const AdminPanel = () => {
                 }
 
                 if (duplicatesToDelete.length === 0) {
-                    if (showMessage) showMessage('No duplicate hospitals found.', 'success');
+                    showAdminMessage('No duplicate hospitals found.', 'success');
                 } else {
-                    if (showMessage) showMessage(`Found ${duplicatesToDelete.length} duplicate hospitals. Deleting...`, 'info');
+                    showAdminMessage(`Found ${duplicatesToDelete.length} duplicate hospitals. Deleting...`, 'info');
                     for (const duplicate of duplicatesToDelete) {
                         try {
                             const doctorsSubcollectionRef = collection(db, `artifacts/${appId}/public/data/hospitals/${duplicate.id}/doctors`);
@@ -254,15 +276,15 @@ const AdminPanel = () => {
                             await deleteDoc(duplicate.ref);
                         } catch (deletionError) {
                             console.error(`Error deleting duplicate hospital ${duplicate.id}:`, deletionError);
-                            if (showMessage) showMessage(`Partial success: Could not delete all duplicates. Error with ${duplicate.id}: ${deletionError.message}`, 'error');
+                            showAdminMessage(`Partial success: Could not delete all duplicates. Error with ${duplicate.id}: ${deletionError.message}`, 'error');
                         }
                     }
-                    if (showMessage) showMessage('Duplicate hospitals and their associated doctors/reviews deleted successfully!', 'success');
+                    showAdminMessage('Duplicate hospitals and their associated doctors/reviews deleted successfully!', 'success');
                 }
-                fetchHospitals();
+                fetchHospitals(true); // Pass true since we are admin
             } catch (error) {
                 console.error("Error identifying/deleting duplicate hospitals:", error);
-                if (showMessage) showMessage(`Error processing duplicates: ${error.message}`, 'error');
+                showAdminMessage(`Error processing duplicates: ${error.message}`, 'error');
             } finally {
                 setLoading(false);
                 setShowConfirm(false);
@@ -275,38 +297,38 @@ const AdminPanel = () => {
     // --- Doctor Management Functions ---
     const handleAddDoctor = async (e) => {
         e.preventDefault();
-        if (!db || !appId || !selectedHospital || !isAdminLoggedIn) { if (showMessage) showMessage("Not authorized or hospital not selected.", 'error'); return; }
+        if (!db || !appId || !selectedHospital || !isAdminLoggedIn) { showAdminMessage("Not authorized or hospital not selected.", 'error'); return; }
         const form = e.target;
         const name = form.name.value.trim();
         const specialty = form.specialty.value.trim();
-        if (!name || !specialty) { if (showMessage) showMessage("Please fill all fields for doctor.", 'error'); return; }
+        if (!name || !specialty) { showAdminMessage("Please fill all fields for doctor.", 'error'); return; }
 
         setLoading(true);
         try {
             const newDoctorRef = doc(collection(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors`));
             await setDoc(newDoctorRef, { name, specialty, ratings: [] });
-            if (showMessage) showMessage('Doctor added successfully!', 'success');
+            showAdminMessage('Doctor added successfully!', 'success'); // Changed to showAdminMessage
             form.reset();
             fetchDoctors(selectedHospital.id);
         } catch (error) {
             console.error("Error adding doctor:", error);
-            if (showMessage) showMessage(`Error adding doctor: ${error.message}.`, 'error');
+            showAdminMessage(`Error adding doctor: ${error.message}.`, 'error');
         } finally {
             setLoading(false);
         }
     };
 
     const handleEditDoctor = async (id, newName, newSpecialty) => {
-        if (!db || !appId || !selectedHospital || !isAdminLoggedIn) { if (showMessage) showMessage("Not authorized or hospital not selected.", 'error'); return; }
+        if (!db || !appId || !selectedHospital || !isAdminLoggedIn) { showAdminMessage("Not authorized or hospital not selected.", 'error'); return; }
         setLoading(true);
         try {
             const doctorDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors`, id);
             await updateDoc(doctorDocRef, { name: newName.trim(), specialty: newSpecialty.trim() });
-            if (showMessage) showMessage('Doctor updated successfully!', 'success');
+            showAdminMessage('Doctor updated successfully!', 'success'); // Changed to showAdminMessage
             fetchDoctors(selectedHospital.id);
         } catch (error) {
             console.error("Error updating doctor:", error);
-            if (showMessage) showMessage(`Error updating doctor: ${error.message}.`, 'error');
+            showAdminMessage(`Error updating doctor: ${error.message}.`, 'error'); // Changed to showAdminMessage
         } finally {
             setLoading(false);
         }
@@ -315,16 +337,16 @@ const AdminPanel = () => {
     const handleDeleteDoctor = (doctorId) => {
         setShowConfirm(true);
         setConfirmAction(() => async () => {
-            if (!db || !appId || !selectedHospital || !isAdminLoggedIn) { if (showMessage) showMessage("Not authorized or hospital not selected.", 'error'); return; }
+            if (!db || !appId || !selectedHospital || !isAdminLoggedIn) { showAdminMessage("Not authorized or hospital not selected.", 'error'); return; }
             setLoading(true);
             try {
                 const doctorDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors`, doctorId);
                 await deleteDoc(doctorDocRef);
-                if (showMessage) showMessage('Doctor deleted successfully!', 'success');
+                showAdminMessage('Doctor deleted successfully!', 'success'); // Changed to showAdminMessage
                 fetchDoctors(selectedHospital.id);
             } catch (error) {
                 console.error("Error deleting doctor:", error);
-                if (showMessage) showMessage(`Error deleting doctor: ${error.message}.`, 'error');
+                showAdminMessage(`Error deleting doctor: ${error.message}.`, 'error'); // Changed to showAdminMessage
             } finally {
                 setLoading(false);
                 setShowConfirm(false);
@@ -337,17 +359,17 @@ const AdminPanel = () => {
     const handleDeleteReview = (reviewIndex) => {
         setShowConfirm(true);
         setConfirmAction(() => async () => {
-            if (!db || !appId || !selectedHospital || !selectedDoctor || !isAdminLoggedIn) { if (showMessage) showMessage("Not authorized or doctor/hospital not selected.", 'error'); return; }
+            if (!db || !appId || !selectedHospital || !selectedDoctor || !isAdminLoggedIn) { showAdminMessage("Not authorized or doctor/hospital not selected.", 'error'); return; }
             setLoading(true);
             try {
                 const doctorDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors`, selectedDoctor.id);
                 const updatedRatings = reviews.filter((_, index) => index !== reviewIndex);
                 await updateDoc(doctorDocRef, { ratings: updatedRatings });
-                if (showMessage) showMessage('Review deleted successfully!', 'success');
+                showAdminMessage('Review deleted successfully!', 'success'); // Changed to showAdminMessage
                 fetchReviews(selectedHospital.id, selectedDoctor.id);
             } catch (error) {
                 console.error("Error deleting review:", error);
-                if (showMessage) showMessage(`Error deleting review: ${error.message}.`, 'error');
+                showAdminMessage(`Error deleting review: ${error.message}.`, 'error'); // Changed to showAdminMessage
             } finally {
                 setLoading(false);
                 setShowConfirm(false);
@@ -361,7 +383,7 @@ const AdminPanel = () => {
         setShowConfirm(true);
         setConfirmAction(() => async () => {
             if (!db || !appId || !selectedHospital || !selectedDoctor || !isAdminLoggedIn) {
-                if (showMessage) showMessage("Not authorized or doctor/hospital not selected.", 'error');
+                showAdminMessage("Not authorized or doctor/hospital not selected.", 'error');
                 setShowConfirm(false);
                 setConfirmAction(null);
                 return;
@@ -372,7 +394,7 @@ const AdminPanel = () => {
                 const doctorSnap = await getDoc(doctorDocRef);
 
                 if (!doctorSnap || !doctorSnap.exists()) {
-                    if (showMessage) showMessage('Doctor not found or data is invalid. Cannot delete comment.', 'error');
+                    showAdminMessage('Doctor not found or data is invalid. Cannot delete comment.', 'error');
                     setLoading(false);
                     setShowConfirm(false);
                     setConfirmAction(null);
@@ -382,12 +404,13 @@ const AdminPanel = () => {
                 const doctorData = doctorSnap.data();
                 const currentRatings = doctorData.ratings || [];
 
+                // Deep copy to ensure immutability before modification
                 const updatedRatings = JSON.parse(JSON.stringify(currentRatings));
 
                 if (updatedRatings[reviewIndex] && updatedRatings[reviewIndex].comments) {
                     updatedRatings[reviewIndex].comments.splice(commentIndex, 1);
                 } else {
-                    if (showMessage) showMessage('Review or comment not found.', 'error');
+                    showAdminMessage('Review or comment not found.', 'error');
                     setLoading(false);
                     setShowConfirm(false);
                     setConfirmAction(null);
@@ -395,11 +418,11 @@ const AdminPanel = () => {
                 }
 
                 await updateDoc(doctorDocRef, { ratings: updatedRatings });
-                if (showMessage) showMessage('Comment deleted successfully!', 'success');
+                showAdminMessage('Comment deleted successfully!', 'success'); // Changed to showAdminMessage
                 fetchReviews(selectedHospital.id, selectedDoctor.id);
             } catch (error) {
                 console.error("Error deleting comment:", error);
-                if (showMessage) showMessage(`Error deleting comment: ${error.message}.`, 'error');
+                showAdminMessage(`Error deleting comment: ${error.message}.`, 'error'); // Changed to showAdminMessage
             } finally {
                 setLoading(false);
                 setShowConfirm(false);
@@ -412,14 +435,15 @@ const AdminPanel = () => {
     const handleLogin = async (e) => {
         e.preventDefault();
         setLoading(true);
-        if (showMessage) showMessage('', ''); // Clear previous messages
+        showAdminMessage('', ''); // Clear previous messages
         try {
-            if (auth) {
-                 await auth.signInWithEmailAndPassword(loginEmail, loginPassword);
+            if (auth) { // Check if auth instance exists
+                 // Corrected: Use the imported signInWithEmailAndPassword function
+                 await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
             } else {
-                throw new Error("Firebase Auth not initialized.");
+                throw new Error("Firebase Auth instance not available. Cannot log in.");
             }
-            if (showMessage) showMessage('Authenticating...', 'info');
+            showAdminMessage('Authenticating...', 'info');
         } catch (error) {
             console.error("Login error:", error);
             let errorMessage = "Login failed. Please check your credentials.";
@@ -432,18 +456,19 @@ const AdminPanel = () => {
             } else if (error.code === 'auth/api-key-not-valid') {
                 errorMessage = "Login failed. Your Firebase API key is not valid or not configured for Authentication.";
             }
-            if (showMessage) showMessage(errorMessage, 'error');
+            showAdminMessage(errorMessage, 'error');
             setLoading(false);
         }
     };
 
     // Handle Logout
     const handleLogout = async () => {
-        if (!auth) return;
+        if (!auth) return; // Check if auth instance exists
         setLoading(true);
         try {
-            await auth.signOut();
-            if (showMessage) showMessage('Logged out successfully!', 'success');
+            // Corrected: Use the imported signOut function
+            await signOut(auth);
+            showAdminMessage('Logged out successfully!', 'success');
             setHospitals([]);
             setDoctors([]);
             setReviews([]);
@@ -455,7 +480,7 @@ const AdminPanel = () => {
             setIsAdminLoggedIn(false);
         } catch (error) {
             console.error("Logout error:", error);
-            if (showMessage) showMessage(`Logout failed: ${error.message}`, 'error');
+            showAdminMessage(`Logout failed: ${error.message}`, 'error');
         } finally {
             setLoading(false);
         }
@@ -464,7 +489,8 @@ const AdminPanel = () => {
 
     // Conditional rendering logic based on `isAdminLoggedIn` state
     const renderContent = () => {
-        if (loadingFirebase || loading) { // Check global firebase loading as well
+        // Use local 'loading' state for AdminPanel specific loading indicator
+        if (loadingFirebase || loading) {
             return <p className="text-center text-gray-500 py-8">Loading application...</p>;
         }
 
@@ -505,6 +531,7 @@ const AdminPanel = () => {
                 return (
                     <div>
                         <h2 className="text-2xl font-semibold text-gray-800 mb-4 border-b pb-3">Hospitals ({hospitals.length} Total)</h2>
+                        {/* Hospital Search Input */}
                         <div className="mb-4">
                             <input
                                 type="text"
@@ -514,6 +541,7 @@ const AdminPanel = () => {
                                 className="w-full p-3 border border-gray-300 rounded-md focus:ring-purple-500 shadow-sm"
                             />
                         </div>
+                        {/* Collapsible Add New Hospital Section */}
                         <div className="mb-6">
                             <button
                                 onClick={() => setShowAddHospitalForm(!showAddHospitalForm)}
@@ -679,6 +707,7 @@ const AdminPanel = () => {
                         <h2 className="text-2xl font-semibold text-gray-800 mb-4 border-b pb-3">
                             Reviews for {selectedDoctor?.name}
                         </h2>
+
                         <h3 className="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Existing Reviews</h3>
                         {reviews.length === 0 ? (
                             <p className="text-gray-500">No reviews found for this doctor.</p>
@@ -705,6 +734,8 @@ const AdminPanel = () => {
                                                 Delete Review
                                             </button>
                                         </div>
+
+                                        {/* Display Comments */}
                                         {review.comments && review.comments.length > 0 && (
                                             <div className="w-full mt-4 pt-4 border-t border-gray-200 space-y-2">
                                                 <p className="font-semibold text-gray-700 text-sm">Comments:</p>
@@ -712,7 +743,7 @@ const AdminPanel = () => {
                                                     <div key={comment.date + commentIndex} className="bg-gray-100 p-3 rounded-md flex justify-between items-start text-sm">
                                                         <div>
                                                             <p className="text-gray-800">{comment.text}</p>
-                                                            <p className="text-xs text-gray-500 mt-1">Date: {comment.date ? new Date(comment.date).toLocaleDateString() : 'N/A'} (Commenter: {comment.userId || 'Unknown'})</p>
+                                                            <p className="text-xs text-gray-500 mt-1">Date: {comment.date || 'N/A'} (Commenter: {comment.userId || 'Unknown'})</p>
                                                         </div>
                                                         <button
                                                             onClick={() => handleDeleteComment(reviewIndex, commentIndex)}
@@ -748,8 +779,8 @@ const AdminPanel = () => {
             </header>
 
             <main className="flex-grow container py-8">
-                {/* Message Box is now a direct child in AdminPanel, consuming showMessage from context */}
-                <MessageBox message={showMessage.text} type={showMessage.type} />
+                {/* Message Box is now a direct child in AdminPanel, consuming its local message state */}
+                <MessageBox message={message.text} type={message.type} />
                 <div className="bg-white p-6 rounded-lg shadow-xl">
                     {renderContent()}
                 </div>
