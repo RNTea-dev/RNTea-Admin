@@ -1,0 +1,342 @@
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles from your original HTML files, integrated here */
+
+/* General Body and Container styles - from original HTMLs */
+body {
+    font-family: 'Inter', sans-serif;
+    /* REMOVED: background-image from Home.html. Page backgrounds will now be applied per component. */
+    background-color: #f0f4f8; /* Default light background color for the entire application */
+    min-height: 100vh; /* Ensure body takes full viewport height */
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    overflow-x: hidden; /* Prevent horizontal scroll from animations, from About.html */
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem;
+    width: 100%;
+}
+
+/* Custom styles for animations from your original HTML files */
+/* These were previously in <style> tags in your HTML. */
+
+/* General Fade-in for main content section */
+.fade-in {
+    opacity: 0;
+    transform: translateY(50px); /* Changed from 20px to 50px for lower starting position */
+    animation: fadeInTransform 0.6s ease-out forwards; /* Changed from 0.8s to 0.6s for faster animation */
+}
+@keyframes fadeInTransform {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Specific animations for elements */
+.fade-in-up {
+    opacity: 0;
+    transform: translateY(30px);
+    animation: fadeInUp 1s ease-out forwards;
+}
+@keyframes fadeInUp {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.scale-in {
+    opacity: 0;
+    transform: scale(0.9);
+    animation: scaleIn 0.8s ease-out forwards;
+}
+@keyframes scaleIn {
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Animation Delays */
+.delay-200ms { animation-delay: 0.2s; }
+.delay-400ms { animation-delay: 0.4s; }
+.delay-600ms { animation-delay: 0.6s; }
+.delay-800ms { animation-delay: 0.8s; }
+.delay-1000ms { animation-delay: 1s; }
+.delay-1200ms { animation-delay: 1.2s; }
+.delay-1400ms { animation-delay: 1.4s; }
+
+/* Button Hover Effect (Ripple-like) */
+.button-hover-effect {
+    position: relative;
+    overflow: hidden;
+    z-index: 1;
+}
+.button-hover-effect::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.2); /* Lighter ripple */
+    border-radius: 50%;
+    transition: width 0.4s ease-out, height 0.4s ease-out, top 0.4s ease-out, left 0.4s ease-out;
+    transform: translate(-50%, -50%);
+    z-index: -1;
+}
+.button-hover-effect:hover::before {
+    width: 200%;
+    height: 200%;
+}
+
+/* Specific text colors from the logo concept (if you use these elsewhere) */
+.text-rntea-rn { color: #1A5276; /* Dark Teal Blue */ }
+.text-rntea-tea { color: #4CAF50; /* Medium Green */ }
+
+
+/* About Page Animations */
+/* --- Keyframe Animations --- */
+
+/* Fade-in from bottom */
+@keyframes fadeInSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Scale-in for images/cards */
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Border pulse for buttons/interactive elements */
+@keyframes pulseBorder {
+    0% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); /* Tailwind green-500 */
+    }
+    70% {
+        box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    }
+}
+
+/* Ripple effect for buttons */
+@keyframes ripple {
+    0% {
+        transform: scale(0);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+.ripple-effect {
+    position: relative;
+    overflow: hidden;
+    transform: translate3d(0, 0, 0);
+}
+.ripple-effect:after {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    background: rgba(255, 255, 255, 0.5); /* White ripple */
+    opacity: 0;
+    pointer-events: none;
+    border-radius: 50%;
+    transform: scale(0);
+    transition: transform 0.5s ease-out, opacity 0.5s ease-out;
+}
+.ripple-effect:active:after {
+    transform: scale(2);
+    opacity: 1;
+    transition: 0s;
+}
+
+
+/* Text slide-in (for headings) */
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-50px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Section Specific Animations */
+.animated-section > * {
+    animation: fadeInSlideUp 0.8s ease-out forwards;
+    opacity: 0; /* Start hidden */
+}
+/* Delay subsequent elements */
+.animated-section > *:nth-child(2) { animation-delay: 0.2s; }
+.animated-section > *:nth-child(3) { animation-delay: 0.4s; }
+.animated-section > *:nth-child(4) { animation-delay: 0.6s; }
+.animated-section > *:nth-child(5) { animation-delay: 0.8s; }
+.animated-section > *:nth-child(6) { animation-delay: 1.0s; }
+.animated-section .animated-img {
+    animation: scaleIn 1s ease-out forwards;
+    opacity: 0;
+    transform: scale(0.95);
+}
+.animated-section .animated-text {
+    animation: slideInLeft 0.8s ease-out forwards;
+    opacity: 0;
+}
+
+.cta-button {
+    animation: pulseBorder 2s infinite ease-out;
+}
+
+/* --- Hover Effects for Sections --- */
+section {
+    transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
+}
+
+section:hover {
+    transform: translateY(-5px); /* Lift effect */
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15); /* More pronounced shadow */
+}
+
+/* Specific adjustments for sections that have backgrounds already */
+section.bg-gradient-to-br:hover,
+section.bg-gradient-to-r:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2); /* Slightly darker shadow for gradient backgrounds */
+}
+
+/* Hover for cards within sections (e.g., Why Choose Us, Team) */
+.grid > div {
+    transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
+}
+
+.grid > div:hover {
+    transform: translateY(-3px) scale(1.01); /* Lift and slight scale */
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Query Page specific styles (from Query.html and Query View.html) */
+.star-rating .star {
+    cursor: pointer;
+    font-size: 1.5rem;
+    color: #d1d5db; /* Gray star */
+    transition: color 0.2s, transform 0.1s ease-out; /* Added transform for pop effect */
+}
+.star-rating .star.filled {
+    color: #fbbf24; /* Amber/Yellow star */
+}
+.star-rating .star:hover {
+    transform: scale(1.2); /* Pop effect on hover */
+}
+/* Custom scrollbar for lists */
+.scrollable-list {
+    max-height: 70vh; /* Limit height for scrollability */
+    overflow-y: auto;
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+}
+.scrollable-list::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+}
+
+/* Fade transition for sections (used in Query and QueryView pages) */
+.fade-section {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+}
+.fade-section.active {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Message box animation (used globally) */
+.message-box-fade {
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+}
+.message-box-fade.show {
+    opacity: 1;
+}
+
+/* Wavy Background Styles for Hero Sections (specifically for Contact and potentially other pages) */
+.wavy-bg {
+    /* Green gradient to match navigation: from-green-700 to-teal-600 */
+    background: linear-gradient(135deg, #047857, #0D9488);
+    position: relative;
+    overflow: hidden; /* Needed for pseudo-elements for animation */
+}
+
+/* New wavy animation based on user's request */
+.wavy-bg::before,
+.wavy-bg::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 100px; /* Adjust height for wave intensity */
+    background-repeat: no-repeat;
+    background-position: center bottom;
+    animation: wave 5s cubic-bezier(0.8, 0, 0.2, 1) infinite alternate; /* Faster animation (5s) */
+}
+
+.wavy-bg::before {
+    top: -50px; /* Adjust vertical position */
+    background-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 1440 100" xmlns="http://www.w3.org/2000/svg"><path fill="%23FFFFFF" d="M0,32L144,42.7C288,53,576,75,864,74.7C1152,75,1296,53,1368,42.7L1440,32L1440,0L1368,0C1296,0,1152,0,864,0C576,0,288,0,144,0L0,0Z"></path></svg>');
+    opacity: 0.2;
+    animation-delay: 0s;
+}
+.wavy-bg::after {
+    top: -20px; /* Adjust vertical position */
+    background-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 1440 100" xmlns="http://www.w3.org/2000/svg"><path fill="%23FFFFFF" d="M0,64L144,74.7C288,85,576,96,864,96C1152,96,1296,85,1368,80L1440,75L1440,0L1368,0C1296,0,1152,0,864,0C576,0,288,0,144,0L0,0Z"></path></svg>');
+    opacity: 0.3;
+    animation-delay: 1s; /* Reduced delay for faster overall effect */
+}
+
+@keyframes wave {
+    0% {
+        transform: translateY(0px); /* Start at original position relative to 'top' */
+    }
+    100% {
+        transform: translateY(30px); /* Move down by 30px (increased from 15px) */
+    }
+}
+
+/* Text shadow for better readability on busy backgrounds */
+.text-shadow-xl {
+    text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.text-shadow-md {
+    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.3);
+}
+

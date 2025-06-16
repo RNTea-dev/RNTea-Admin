@@ -1,0 +1,33 @@
+{
+  "name": "rntea-website",
+  "version": "1.0.0",
+  "description": "RNTea healthcare rating platform",
+  "main": "src/main.jsx",
+  "scripts": {
+    "dev": "vite",             
+    "build": "vite build",     
+    "preview": "vite preview"  
+  },
+  "keywords": ["react", "firebase", "admin", "healthcare", "routing"],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/RNTea-dev/RNTea-Admin/issues"
+  },
+  "homepage": "https://github.com/RNTea-dev/RNTea-Admin#readme",
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "firebase": "^11.9.1",
+    "react-router-dom": "^6.23.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "tailwindcss": "^3.4.4",      
+    "postcss": "^8.4.38",         
+    "autoprefixer": "^10.4.19",
+    "postcss-nesting": "^12.1.5", 
+    "vite": "^6.3.5"
+  }
+}

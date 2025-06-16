@@ -1,21 +1,47 @@
-// React hooks are accessed globally when using Babel in the browser (due to React CDNs in index.html)
-const { useState, useEffect, useCallback } = React;
+// src/App.jsx
+
+// Import React and its hooks directly
+import React, { useState, useEffect, useCallback } from 'react';
+
+// Import Firebase modules after installing 'firebase' via npm
+import { initializeApp } from 'firebase/app';
+import {
+    getAuth,
+    signInWithEmailAndPassword,
+    onAuthStateChanged,
+    signOut,
+    signInWithCustomToken // Added this for __initial_auth_token
+} from 'firebase/auth';
+import {
+    getFirestore,
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    setDoc,
+    updateDoc,
+    deleteDoc,
+    query,
+    where
+} from 'firebase/firestore';
+
+// Import Link for navigation within the admin panel (if needed)
+import { Link } from 'react-router-dom';
+
 
 // MANDATORY: Firebase configuration and initial auth token provided by the Canvas environment.
 // These are globally available variables in the Canvas runtime.
 const canvasFirebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : null;
+
 
 // IMPORTANT: Firebase Configuration for Admin Panel
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// Your web app's Firebase configuration.
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional.
+// This fallback is crucial for local development if __firebase_config isn't available.
 const firebaseConfig = canvasFirebaseConfig || {
-    // SECURITY IMPROVEMENT:
-    // API Key is now retrieved from an environment variable.
-    // For local development, create a .env file in your project's root and add:
-    // REACT_APP_FIREBASE_API_KEY="YOUR_ACTUAL_FIREBASE_API_KEY_HERE"
-    // Remember to add .env to your .gitignore file!
-    apiKey: typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_API_KEY ? process.env.REACT_APP_FIREBASE_API_KEY : "YOUR_FALLBACK_API_KEY_IF_NOT_IN_ENV_OR_CANVAS",
+    apiKey: "YOUR_ACTUAL_FIREBASE_API_KEY_HERE", // REMEMBER TO REPLACE THIS WITH YOUR REAL API KEY
     authDomain: "rntea-cca78.firebaseapp.com",
     projectId: "rntea-cca78",
     storageBucket: "rntea-cca78.firebasestorage.app",
@@ -26,7 +52,7 @@ const firebaseConfig = canvasFirebaseConfig || {
 
 // For the purpose of this example, we'll derive a consistent 'appId' for Firestore paths.
 // Prefer __app_id from Canvas, otherwise fallback to Firebase project ID.
-const appIdentifier = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId;
+const appIdentifier = canvasAppId || firebaseConfig.projectId;
 
 
 // Confirmation Modal Component - Displays a modal for confirmation
@@ -69,8 +95,12 @@ const MessageBox = ({ message, type }) => {
     );
 };
 
+// Create a Firebase Context to pass `db`, `auth`, `userId`, `appId` down to child components
+export const FirebaseContext = React.createContext(null);
+
+
 // Main Admin App Component
-function App() {
+export default function App() {
     // State variables for managing UI and data
     const [activeSection, setActiveSection] = useState('hospitals');
     const [hospitals, setHospitals] = useState([]);
@@ -91,47 +121,40 @@ function App() {
 
     // State for login form inputs
     const [loginEmail, setLoginEmail] = useState('');
-    const [loginPassword, setLoginPassword] = useState(''); // Corrected: was missing `= useState('')`
+    const [loginPassword, setLoginPassword] = useState('');
 
-    // NEW State for UI elements
-    const [showAddHospitalForm, setShowAddHospitalForm] = useState(false); // To toggle add hospital form visibility
-    const [hospitalSearchTerm, setHospitalSearchTerm] = useState(''); // For hospital search
-    const [doctorSearchTerm, setDoctorSearchTerm] = useState('');     // For doctor search
+    // State for UI elements
+    const [showAddHospitalForm, setShowAddHospitalForm] = useState(false);
+    const [hospitalSearchTerm, setHospitalSearchTerm] = useState('');
+    const [doctorSearchTerm, setDoctorSearchTerm] = useState('');
 
 
     // Callback for displaying transient messages (success/error)
     const showMessage = useCallback((text, type) => {
         setMessage({ text, type });
-        // Auto-hide message after 5 seconds
         const timer = setTimeout(() => setMessage({ text: '', type: '' }), 5000);
         return () => clearTimeout(timer);
     }, []);
 
     // Function to check if the authenticated user is an admin
-    // This function now RETURNS the admin status
-    const checkAdminStatus = useCallback(async (uid, db, auth) => {
-        console.log(`[AdminAuthCheck] Initiating admin status check for UID: ${uid}`);
+    const checkAdminStatus = useCallback(async (uid, db) => {
         if (!db || !appIdentifier) {
             console.error("[AdminAuthCheck] Firestore instance or appIdentifier not provided. Cannot check admin status.");
             showMessage('Firebase database not ready for admin check. Please try refreshing.', 'error');
-            return false; // Return false on error
+            return false;
         }
         try {
-            console.log(`[AdminAuthCheck] Attempting to fetch admin document at path: artifacts/${appIdentifier}/admins/${uid}`);
-            // Use doc and getDoc for a single document fetch as per Firestore v9+ best practices
-            const adminDocRef = db.collection(`artifacts/${appIdentifier}/admins`).doc(uid);
-            const adminDocSnap = await adminDocRef.get();
-
-            if (adminDocSnap.exists) {
-                console.log(`[AdminStatus] User ${uid} found in admins collection. Admin access granted.`);
+            const adminDocRef = doc(db, `artifacts/${appIdentifier}/admins`, uid);
+            const adminDocSnap = await getDoc(adminDocRef);
+            if (adminDocSnap.exists()) {
                 return true;
             } else {
-                console.warn(`[AdminStatus] User ${uid} is authenticated but NOT listed as an admin.`);
+                showMessage(`Access Denied: Your account (${uid}) is not authorized as an administrator. Logging out...`, 'error');
                 return false;
             }
         } catch (error) {
             console.error("[AdminStatus] Error checking admin status:", error);
-            showMessage(`Error verifying admin status: ${error.message}. Please ensure Firestore rules allow read access to 'artifacts/${appIdentifier}/admins/{userId}' for logged-in users.`, 'error');
+            showMessage(`Error verifying admin status: ${error.message}.`, 'error');
             return false;
         }
     }, [appIdentifier, showMessage]);
@@ -139,67 +162,51 @@ function App() {
 
     // Effect 1: Initialize Firebase App and Services, and set up Auth State Listener (runs once)
     useEffect(() => {
-        // Only proceed if window.firebase is available and Firebase hasn't been initialized in state yet
-        if (window.firebase && !authInstance && !dbInstance) {
+        if (!authInstance && !dbInstance) {
             try {
-                console.log("[FirebaseInit] Initializing Firebase app and services.");
-                const firebaseApp = window.firebase.initializeApp(firebaseConfig);
-                const authentication = window.firebase.auth();
-                const database = window.firebase.firestore();
+                const firebaseApp = initializeApp(firebaseConfig);
+                const authentication = getAuth(firebaseApp);
+                const database = getFirestore(firebaseApp);
 
                 setAuthInstance(authentication);
                 setDbInstance(database);
-                console.log("[FirebaseInit] Firebase services (Auth, Firestore) initialized and set in state. App Name:", firebaseApp.name);
 
-                // Set up auth state listener immediately after Firebase is initialized
-                const unsubscribeAuth = authentication.onAuthStateChanged(async (user) => {
-                    console.log("[AuthState] onAuthStateChanged triggered.");
+                const unsubscribeAuth = onAuthStateChanged(authentication, async (user) => {
                     if (user) {
-                        console.log(`[AuthState] User authenticated with UID: ${user.uid}. Checking admin status.`);
                         setCurrentUserId(user.uid);
-                        // Call checkAdminStatus and update isAdminLoggedIn based on its return
-                        const isAdmin = await checkAdminStatus(user.uid, database, authentication);
-                        setIsAdminLoggedIn(isAdmin); // Set isAdminLoggedIn state
-                        setLoading(false); // Stop loading after admin check completes
-                        console.log(`[AuthState] isAdminLoggedIn set to: ${isAdmin}. Loading set to false.`);
+                        const isAdmin = await checkAdminStatus(user.uid, database);
+                        setIsAdminLoggedIn(isAdmin);
+                        setLoading(false);
 
                         if (!isAdmin) {
-                             // If not admin, ensure they are logged out
-                            await authentication.signOut();
+                            await signOut(authentication);
                             showMessage('Access Denied: Your account is not authorized as an administrator. Logging out...', 'error');
                         }
                     } else {
-                        console.log("[AuthState] No user authenticated. Displaying login form.");
                         setCurrentUserId(null);
                         setIsAdminLoggedIn(false);
-                        setLoading(false); // Stop loading if no user is authenticated
+                        setLoading(false);
                         showMessage('Please log in to access the Admin Panel.', 'info');
                     }
                 });
 
-                // Attempt automatic sign-in with Canvas token *after* listener is set up
                 if (initialAuthToken) {
-                    console.log("[FirebaseInit] Attempting sign-in with __initial_auth_token.");
-                    authentication.signInWithCustomToken(initialAuthToken)
-                        .then(() => console.log("[FirebaseInit] Automatic login attempt resolved."))
+                    signInWithCustomToken(authentication, initialAuthToken)
                         .catch(tokenError => {
-                            console.error("[FirebaseInit] Error signing in with __initial_auth_token:", tokenError);
+                            console.error("Error signing in with __initial_auth_token:", tokenError);
                             showMessage(`Automatic login failed: ${tokenError.message}. Please try manual login.`, 'error');
-                            setLoading(false); // Stop loading if auto-login fails
+                            setLoading(false);
                         });
                 } else if (!authentication.currentUser) {
-                    // If no initial token and no current user, ensure loading stops
                     setLoading(false);
-                    console.log("[FirebaseInit] No initial token and no current user. Loading set to false.");
                 }
 
                 return () => {
-                    console.log("[FirebaseInit] Cleaning up Firebase effects. Unsubscribing auth listener.");
-                    unsubscribeAuth(); // Clean up the listener when component unmounts
+                    unsubscribeAuth();
                 };
 
             } catch (error) {
-                console.error("[FirebaseInit] Firebase Initialization Error:", error);
+                console.error("Firebase Initialization Error:", error);
                 let errorMessage = `Failed to initialize Firebase: ${error.message}.`;
                 if (error.code === 'auth/api-key-not-valid') {
                     errorMessage += " Please double-check your Firebase API key in firebaseConfig. It might be incorrect or not enabled for Authentication.";
@@ -207,73 +214,56 @@ function App() {
                 setMessage({ text: errorMessage, type: 'error' });
                 setLoading(false);
             }
-        } else if (!window.firebase) {
-            console.warn("[FirebaseInit] window.firebase not available yet. Ensure Firebase SDKs are loaded in index.html.");
-            // This warning will show if the script runs before Firebase global is available.
-            // React's re-renders might pick it up later if CDNs are slow.
         }
-    }, [firebaseConfig, initialAuthToken, showMessage, checkAdminStatus, authInstance, dbInstance]); // Dependencies for this effect
+    }, [firebaseConfig, initialAuthToken, showMessage, checkAdminStatus, authInstance, dbInstance]);
 
     // Callback for fetching all hospitals from Firestore
     const fetchHospitals = useCallback(async () => {
-        // Ensure Firebase is ready and admin is logged in before attempting fetches
         if (!dbInstance || !currentUserId || !appIdentifier || !isAdminLoggedIn) {
-            console.warn("[FetchHospitals] Skipping fetch: Firebase not ready, not authenticated, or not admin.");
             return;
         }
-        setLoading(true); // Start loading state
+        setLoading(true);
         try {
-            console.log("[FetchHospitals] Fetching hospitals from Firestore...");
-            const hospitalsCollectionRef = dbInstance.collection(`artifacts/${appIdentifier}/public/data/hospitals`);
-            const hospitalDocsSnapshot = await hospitalsCollectionRef.get();
+            const hospitalsCollectionRef = collection(dbInstance, `artifacts/${appIdentifier}/public/data/hospitals`);
+            const hospitalDocsSnapshot = await getDocs(hospitalsCollectionRef);
             const fetchedHospitals = hospitalDocsSnapshot.docs.map(document => ({ id: document.id, ...document.data() }));
 
             setHospitals(fetchedHospitals);
             showMessage('Hospitals loaded successfully!', 'success');
-            console.log(`[FetchHospitals] Loaded ${fetchedHospitals.length} hospitals.`);
         } catch (error) {
-            console.error("[FetchHospitals] Error fetching hospitals from Firestore:", error);
+            console.error("Error fetching hospitals from Firestore:", error);
             showMessage(`Error loading hospitals: ${error.message}`, 'error');
         } finally {
             setLoading(false);
-            console.log("[FetchHospitals] Loading set to false after hospital fetch.");
         }
     }, [dbInstance, currentUserId, appIdentifier, isAdminLoggedIn, showMessage]);
 
     // Effect to trigger fetchHospitals once admin is logged in and DB instance is ready
     useEffect(() => {
-        console.log(`[DataFetch Trigger] isAdminLoggedIn: ${isAdminLoggedIn}, dbInstance: ${!!dbInstance}, currentUserId: ${!!currentUserId}`);
         if (isAdminLoggedIn && dbInstance && currentUserId) {
-            console.log("[DataFetch] Admin is logged in and DB instance is ready. Initiating hospital fetch.");
             fetchHospitals();
         }
-        // Removed the "else if (!loading && !isAdminLoggedIn)" block to prevent premature clearing
     }, [isAdminLoggedIn, dbInstance, currentUserId, fetchHospitals]);
 
 
     // Callback for fetching doctors for a specific hospital
     const fetchDoctors = useCallback(async (hospitalId) => {
-        console.log(`[FetchDoctors] Called for hospitalId: ${hospitalId}`); // Added log
         if (!dbInstance || !currentUserId || !appIdentifier || !isAdminLoggedIn) {
             showMessage("Authorization required to fetch doctors. Please login.", 'error');
-            console.warn("[FetchDoctors] Skipping fetch because not authorized or Firebase not ready."); // Added log
             return;
         }
         setLoading(true);
         try {
-            console.log(`[FetchDoctors] Fetching doctors from path: artifacts/${appIdentifier}/public/data/hospitals/${hospitalId}/doctors`); // Added log
-            const doctorsColRef = dbInstance.collection(`artifacts/${appIdentifier}/public/data/hospitals/${hospitalId}/doctors`);
-            const doctorSnapshot = await doctorsColRef.get();
+            const doctorsColRef = collection(dbInstance, `artifacts/${appIdentifier}/public/data/hospitals/${hospitalId}/doctors`);
+            const doctorSnapshot = await getDocs(doctorsColRef);
             const fetchedDoctors = doctorSnapshot.docs.map(document => ({ id: document.id, ...document.data() }));
             setDoctors(fetchedDoctors);
             showMessage(`Doctors for ${selectedHospital?.name || 'selected hospital'} loaded successfully!`, 'success');
-            console.log(`[FetchDoctors] Loaded ${fetchedDoctors.length} doctors for ${selectedHospital?.name || hospitalId}.`); // Added log
         } catch (error) {
-            console.error("[FetchDoctors] Error fetching doctors:", error);
+            console.error("Error fetching doctors:", error);
             showMessage(`Error loading doctors: ${error.message}`, 'error');
         } finally {
             setLoading(false);
-            console.log("[FetchDoctors] Loading set to false after doctor fetch."); // Added log
         }
     }, [dbInstance, currentUserId, selectedHospital, appIdentifier, isAdminLoggedIn, showMessage]);
 
@@ -285,28 +275,22 @@ function App() {
         }
         setLoading(true);
         try {
-            console.log(`[FetchReviews] Fetching reviews for doctor ID: ${doctorId} in hospital ID: ${hospitalId}`);
-            const doctorDocRef = dbInstance.collection(`artifacts/${appIdentifier}/public/data/hospitals/${hospitalId}/doctors`).doc(doctorId);
-            const doctorSnap = await doctorDocRef.get();
-            if (doctorSnap.exists) {
+            const doctorDocRef = doc(dbInstance, `artifacts/${appIdentifier}/public/data/hospitals/${hospitalId}/doctors`, doctorId);
+            const doctorSnap = await getDoc(doctorDocRef);
+            if (doctorSnap.exists()) {
                 const doctorData = doctorSnap.data();
-                // Ensure comments array is always present, even if empty
                 const reviewsWithComments = (doctorData.ratings || []).map(review => ({
                     ...review,
                     comments: review.comments || []
                 }));
                 setReviews(reviewsWithComments);
                 showMessage(`Reviews for ${selectedDoctor?.name || 'selected doctor'} loaded successfully!`, 'success');
-                console.log(`[FetchReviews] Loaded ${doctorData.ratings?.length || 0} reviews for ${selectedDoctor?.name || doctorId}.`);
-                // NEW: Log the reviews array with comments to debug its structure
-                console.log("[FetchReviews] Reviews after processing (with comments field guaranteed):", reviewsWithComments);
             } else {
                 setReviews([]);
                 showMessage('Doctor not found, no reviews to display.', 'error');
-                console.warn(`[FetchReviews] Doctor document ${doctorId} not found.`);
             }
         } catch (error) {
-            console.error("[FetchReviews] Error fetching reviews:", error);
+            console.error("Error fetching reviews:", error);
             showMessage(`Error loading reviews: ${error.message}`, 'error');
         } finally {
             setLoading(false);
@@ -324,21 +308,19 @@ function App() {
 
         setLoading(true);
         try {
-            console.log(`[HospitalMgmt] Adding new hospital: ${name}`);
-            const newHospitalRef = dbInstance.collection(`artifacts/${appIdentifier}/public/data/hospitals`).doc();
-            await newHospitalRef.set({ name, location });
+            const newHospitalRef = doc(collection(dbInstance, `artifacts/${appIdentifier}/public/data/hospitals`));
+            await setDoc(newHospitalRef, { name, location });
 
-            // Create and delete a dummy doc in subcollection to ensure it exists for rules
-            const dummyDoctorRef = dbInstance.collection(`artifacts/${appIdentifier}/public/data/hospitals/${newHospitalRef.id}/doctors`).doc('dummy_placeholder');
-            await dummyDoctorRef.set({ _placeholder: true });
-            await dummyDoctorRef.delete();
+            const dummyDoctorRef = doc(collection(dbInstance, `artifacts/${appIdentifier}/public/data/hospitals/${newHospitalRef.id}/doctors`), 'dummy_placeholder');
+            await setDoc(dummyDoctorRef, { _placeholder: true });
+            await deleteDoc(dummyDoctorRef);
 
             showMessage('Hospital added successfully!', 'success');
             form.reset();
             fetchHospitals();
         } catch (error) {
-            console.error("[HospitalMgmt] Error adding hospital:", error);
-            showMessage(`Error adding hospital: ${error.message}. Check Firestore rules for /public/data/hospitals.`, 'error');
+            console.error("Error adding hospital:", error);
+            showMessage(`Error adding hospital: ${error.message}.`, 'error');
         } finally {
             setLoading(false);
         }
@@ -348,14 +330,13 @@ function App() {
         if (!dbInstance || !currentUserId || !appIdentifier || !isAdminLoggedIn) { showMessage("Not authorized. Please login.", 'error'); return; }
         setLoading(true);
         try {
-            console.log(`[HospitalMgmt] Editing hospital ID: ${id}`);
-            const hospitalDocRef = dbInstance.collection(`artifacts/${appIdentifier}/public/data/hospitals`).doc(id);
-            await hospitalDocRef.update({ name: newName.trim(), location: newLocation.trim() });
+            const hospitalDocRef = doc(dbInstance, `artifacts/${appIdentifier}/public/data/hospitals`, id);
+            await updateDoc(hospitalDocRef, { name: newName.trim(), location: newLocation.trim() });
             showMessage('Hospital updated successfully!', 'success');
             fetchHospitals();
         } catch (error) {
-            console.error("[HospitalMgmt] Error updating hospital:", error);
-            showMessage(`Error updating hospital: ${error.message}. Check Firestore rules for /public/data/hospitals.`, 'error');
+            console.error("Error updating hospital:", error);
+            showMessage(`Error updating hospital: ${error.message}.`, 'error');
         } finally {
             setLoading(false);
         }
@@ -367,18 +348,17 @@ function App() {
             if (!dbInstance || !currentUserId || !appIdentifier || !isAdminLoggedIn) { showMessage("Not authorized. Please login.", 'error'); return; }
             setLoading(true);
             try {
-                console.log(`[HospitalMgmt] Deleting hospital ID: ${hospitalId} and its doctors.`);
-                const doctorsToDeleteSnapshot = await dbInstance.collection(`artifacts/${appIdentifier}/public/data/hospitals/${hospitalId}/doctors`).get();
+                const doctorsToDeleteSnapshot = await getDocs(collection(dbInstance, `artifacts/${appIdentifier}/public/data/hospitals/${hospitalId}/doctors`));
                 for (const d of doctorsToDeleteSnapshot.docs) {
-                    await d.ref.delete();
+                    await deleteDoc(d.ref);
                 }
-                const hospitalDocRef = dbInstance.collection(`artifacts/${appIdentifier}/public/data/hospitals`).doc(hospitalId);
-                await hospitalDocRef.delete();
+                const hospitalDocRef = doc(dbInstance, `artifacts/${appIdentifier}/public/data/hospitals`, hospitalId);
+                await deleteDoc(hospitalDocRef);
                 showMessage('Hospital and its doctors deleted successfully!', 'success');
                 fetchHospitals();
             } catch (error) {
-                console.error("Admin: Error deleting hospital:", error);
-                showMessage(`Error deleting hospital: ${error.message}. Check Firestore rules for /public/data/hospitals.`, 'error');
+                console.error("Error deleting hospital:", error);
+                showMessage(`Error deleting hospital: ${error.message}.`, 'error');
             } finally {
                 setLoading(false);
                 setShowConfirm(false);
@@ -393,9 +373,8 @@ function App() {
             if (!dbInstance || !currentUserId || !appIdentifier || !isAdminLoggedIn) { showMessage("Not authorized. Please login.", 'error'); return; }
             setLoading(true);
             try {
-                console.log("[HospitalMgmt] Initiating duplicate hospital removal.");
-                const hospitalsColRef = dbInstance.collection(`artifacts/${appIdentifier}/public/data/hospitals`);
-                const hospitalDocsSnapshot = await hospitalsColRef.get();
+                const hospitalsColRef = collection(dbInstance, `artifacts/${appIdentifier}/public/data/hospitals`);
+                const hospitalDocsSnapshot = await getDocs(hospitalsColRef);
                 const uniqueHospitalsMap = new Map();
                 const duplicatesToDelete = [];
 
@@ -412,22 +391,18 @@ function App() {
 
                 if (duplicatesToDelete.length === 0) {
                     showMessage('No duplicate hospitals found.', 'success');
-                    console.log("Admin: No duplicate hospitals found.");
                 } else {
                     showMessage(`Found ${duplicatesToDelete.length} duplicate hospitals. Deleting...`, 'info');
-                    console.log(`Admin: Found ${duplicatesToDelete.length} duplicate hospitals. Proceeding with deletion.`);
                     for (const duplicate of duplicatesToDelete) {
                         try {
-                            const doctorsSubcollectionRef = dbInstance.collection(`artifacts/${appIdentifier}/public/data/hospitals/${duplicate.id}/doctors`);
-                            const doctorsSnapshot = await doctorsSubcollectionRef.get();
+                            const doctorsSubcollectionRef = collection(dbInstance, `artifacts/${appIdentifier}/public/data/hospitals/${duplicate.id}/doctors`);
+                            const doctorsSnapshot = await getDocs(doctorsSubcollectionRef);
                             for (const doctorDoc of doctorsSnapshot.docs) {
-                                await doctorDoc.ref.delete();
-                                console.log(`Admin: Deleted doctor ${doctorDoc.id} from duplicate hospital ${duplicate.id}`);
+                                await deleteDoc(doctorDoc.ref);
                             }
-                            await duplicate.ref.delete();
-                            console.log(`Admin: Deleted duplicate hospital: ${duplicate.id}`);
+                            await deleteDoc(duplicate.ref);
                         } catch (deletionError) {
-                            console.error(`Admin: Error deleting duplicate hospital ${duplicate.id}:`, deletionError);
+                            console.error(`Error deleting duplicate hospital ${duplicate.id}:`, deletionError);
                             showMessage(`Partial success: Could not delete all duplicates. Error with ${duplicate.id}: ${deletionError.message}`, 'error');
                         }
                     }
@@ -435,7 +410,7 @@ function App() {
                 }
                 fetchHospitals();
             } catch (error) {
-                console.error("Admin: Error identifying/deleting duplicate hospitals:", error);
+                console.error("Error identifying/deleting duplicate hospitals:", error);
                 showMessage(`Error processing duplicates: ${error.message}`, 'error');
             } finally {
                 setLoading(false);
@@ -457,15 +432,14 @@ function App() {
 
         setLoading(true);
         try {
-            console.log(`Admin: Adding new doctor: ${name} to hospital ${selectedHospital.id}`);
-            const newDoctorRef = dbInstance.collection(`artifacts/${appIdentifier}/public/data/hospitals/${selectedHospital.id}/doctors`).doc();
-            await newDoctorRef.set({ name, specialty, ratings: [] });
+            const newDoctorRef = doc(collection(dbInstance, `artifacts/${appIdentifier}/public/data/hospitals/${selectedHospital.id}/doctors`));
+            await setDoc(newDoctorRef, { name, specialty, ratings: [] });
             showMessage('Doctor added successfully!', 'success');
             form.reset();
             fetchDoctors(selectedHospital.id);
         } catch (error) {
-            console.error("Admin: Error adding doctor:", error);
-            showMessage(`Error adding doctor: ${error.message}. Check Firestore rules for /public/data/hospitals/{hospitalId}/doctors.`, 'error');
+            console.error("Error adding doctor:", error);
+            showMessage(`Error adding doctor: ${error.message}.`, 'error');
         } finally {
             setLoading(false);
         }
@@ -475,14 +449,13 @@ function App() {
         if (!dbInstance || !currentUserId || !appIdentifier || !selectedHospital || !isAdminLoggedIn) { showMessage("Not authorized or hospital not selected.", 'error'); return; }
         setLoading(true);
         try {
-            console.log(`Admin: Editing doctor ID: ${id} in hospital ${selectedHospital.id}`);
-            const doctorDocRef = dbInstance.collection(`artifacts/${appIdentifier}/public/data/hospitals/${selectedHospital.id}/doctors`).doc(id);
-            await doctorDocRef.update({ name: newName.trim(), specialty: newSpecialty.trim() });
+            const doctorDocRef = doc(dbInstance, `artifacts/${appIdentifier}/public/data/hospitals/${selectedHospital.id}/doctors`, id);
+            await updateDoc(doctorDocRef, { name: newName.trim(), specialty: newSpecialty.trim() });
             showMessage('Doctor updated successfully!', 'success');
             fetchDoctors(selectedHospital.id);
         } catch (error) {
-            console.error("Admin: Error updating doctor:", error);
-            showMessage(`Error updating doctor: ${error.message}. Check Firestore rules for /public/data/hospitals/{hospitalId}/doctors.`, 'error');
+            console.error("Error updating doctor:", error);
+            showMessage(`Error updating doctor: ${error.message}.`, 'error');
         } finally {
             setLoading(false);
         }
@@ -494,14 +467,13 @@ function App() {
             if (!dbInstance || !currentUserId || !appIdentifier || !selectedHospital || !isAdminLoggedIn) { showMessage("Not authorized or hospital not selected.", 'error'); return; }
             setLoading(true);
             try {
-                console.log(`Admin: Deleting doctor ID: ${doctorId} from hospital ${selectedHospital.id}`);
-                const doctorDocRef = dbInstance.collection(`artifacts/${appIdentifier}/public/data/hospitals/${selectedHospital.id}/doctors`).doc(doctorId);
-                await doctorDocRef.delete();
+                const doctorDocRef = doc(dbInstance, `artifacts/${appIdentifier}/public/data/hospitals/${selectedHospital.id}/doctors`, doctorId);
+                await deleteDoc(doctorDocRef);
                 showMessage('Doctor deleted successfully!', 'success');
                 fetchDoctors(selectedHospital.id);
             } catch (error) {
-                console.error("Admin: Error deleting doctor:", error);
-                showMessage(`Error deleting doctor: ${error.message}. Check Firestore rules for /public/data/hospitals/{hospitalId}/doctors.`, 'error');
+                console.error("Error deleting doctor:", error);
+                showMessage(`Error deleting doctor: ${error.message}.`, 'error');
             } finally {
                 setLoading(false);
                 setShowConfirm(false);
@@ -517,15 +489,14 @@ function App() {
             if (!dbInstance || !currentUserId || !appIdentifier || !selectedHospital || !selectedDoctor || !isAdminLoggedIn) { showMessage("Not authorized or doctor/hospital not selected.", 'error'); return; }
             setLoading(true);
             try {
-                console.log(`Admin: Deleting review at index ${reviewIndex} for doctor ${selectedDoctor.id}`);
-                const doctorDocRef = dbInstance.collection(`artifacts/${appIdentifier}/public/data/hospitals/${selectedHospital.id}/doctors`).doc(selectedDoctor.id);
+                const doctorDocRef = doc(dbInstance, `artifacts/${appIdentifier}/public/data/hospitals/${selectedHospital.id}/doctors`, selectedDoctor.id);
                 const updatedRatings = reviews.filter((_, index) => index !== reviewIndex);
-                await doctorDocRef.update({ ratings: updatedRatings });
+                await updateDoc(doctorDocRef, { ratings: updatedRatings });
                 showMessage('Review deleted successfully!', 'success');
                 fetchReviews(selectedHospital.id, selectedDoctor.id);
             } catch (error) {
-                console.error("Admin: Error deleting review:", error);
-                showMessage(`Error deleting review: ${error.message}. Check Firestore rules for /public/data/hospitals/{hospitalId}/doctors.`, 'error');
+                console.error("Error deleting review:", error);
+                showMessage(`Error deleting review: ${error.message}.`, 'error');
             } finally {
                 setLoading(false);
                 setShowConfirm(false);
@@ -534,7 +505,7 @@ function App() {
         });
     };
 
-    // NEW: Function to handle deleting a comment from a specific review
+    // Function to handle deleting a comment from a specific review
     const handleDeleteComment = (reviewIndex, commentIndex) => {
         setShowConfirm(true);
         setConfirmAction(() => async () => {
@@ -546,20 +517,10 @@ function App() {
             }
             setLoading(true);
             try {
-                console.log(`Admin: Deleting comment at index ${commentIndex} from review at index ${reviewIndex} for doctor ${selectedDoctor.id}`);
+                const doctorDocRef = doc(dbInstance, `artifacts/${appIdentifier}/public/data/hospitals/${selectedHospital.id}/doctors`, selectedDoctor.id);
+                const doctorSnap = await getDoc(doctorDocRef);
 
-                const doctorDocRef = dbInstance.collection(`artifacts/${appIdentifier}/public/data/hospitals/${selectedHospital.id}/doctors`).doc(selectedDoctor.id);
-                console.log("[DEBUG] doctorDocRef:", doctorDocRef); // Log the ref
-                const doctorSnap = await doctorDocRef.get();
-
-                // Extensive logging of doctorSnap for debugging
-                console.log("[DEBUG] doctorSnap (after await):", doctorSnap);
-                console.log("[DEBUG] typeof doctorSnap:", typeof doctorSnap);
-                console.log("[DEBUG] doctorSnap.exists:", doctorSnap.exists);
-                console.log("[DEBUG] typeof doctorSnap.exists:", typeof doctorSnap.exists);
-
-                // FIX: Changed from typeof doctorSnap.exists !== 'function' to direct boolean check
-                if (!doctorSnap || !doctorSnap.exists) { // Check if doctorSnap is null/undefined or if it simply doesn't exist
+                if (!doctorSnap || !doctorSnap.exists()) {
                     showMessage('Doctor not found or data is invalid. Cannot delete comment.', 'error');
                     setLoading(false);
                     setShowConfirm(false);
@@ -574,7 +535,7 @@ function App() {
                 const updatedRatings = JSON.parse(JSON.stringify(currentRatings));
 
                 if (updatedRatings[reviewIndex] && updatedRatings[reviewIndex].comments) {
-                    updatedRatings[reviewIndex].comments.splice(commentIndex, 1); // Remove the comment
+                    updatedRatings[reviewIndex].comments.splice(commentIndex, 1);
                 } else {
                     showMessage('Review or comment not found.', 'error');
                     setLoading(false);
@@ -583,12 +544,12 @@ function App() {
                     return;
                 }
 
-                await doctorDocRef.update({ ratings: updatedRatings });
+                await updateDoc(doctorDocRef, { ratings: updatedRatings });
                 showMessage('Comment deleted successfully!', 'success');
-                fetchReviews(selectedHospital.id, selectedDoctor.id); // Re-fetch reviews to update UI
+                fetchReviews(selectedHospital.id, selectedDoctor.id);
             } catch (error) {
-                console.error("Admin: Error deleting comment:", error);
-                showMessage(`Error deleting comment: ${error.message}. Check Firestore rules.`, 'error');
+                console.error("Error deleting comment:", error);
+                showMessage(`Error deleting comment: ${error.message}.`, 'error');
             } finally {
                 setLoading(false);
                 setShowConfirm(false);
@@ -601,19 +562,16 @@ function App() {
     const handleLogin = async (e) => {
         e.preventDefault();
         setLoading(true);
-        setMessage({ text: '', type: '' }); // Clear previous messages
+        setMessage({ text: '', type: '' });
         try {
-            console.log(`[LoginAttempt] Attempting login for: ${loginEmail}`);
             if (authInstance) {
-                 const userCredential = await authInstance.signInWithEmailAndPassword(loginEmail, loginPassword);
-                 console.log("[LoginAttempt] signInWithEmailAndPassword resolved. User:", userCredential.user.uid);
-                 // The onAuthStateChanged listener will now pick this up and check admin status
+                 await signInWithEmailAndPassword(authInstance, loginEmail, loginPassword);
             } else {
                 throw new Error("Firebase Auth not initialized.");
             }
-            showMessage('Authenticating...', 'info'); // Provide immediate feedback
+            showMessage('Authenticating...', 'info');
         } catch (error) {
-            console.error("[LoginAttempt] Login error:", error);
+            console.error("Login error:", error);
             let errorMessage = "Login failed. Please check your credentials.";
             if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
                 errorMessage = "Invalid email or password.";
@@ -625,7 +583,7 @@ function App() {
                 errorMessage = "Login failed. Your Firebase API key is not valid or not configured for Authentication.";
             }
             setMessage({ text: errorMessage, type: 'error' });
-            setLoading(false); // Stop loading if login fails
+            setLoading(false);
         }
     };
 
@@ -634,21 +592,19 @@ function App() {
         if (!authInstance) return;
         setLoading(true);
         try {
-            console.log("Admin: Logging out user.");
-            await authInstance.signOut();
+            await signOut(authInstance);
             showMessage('Logged out successfully!', 'success');
-            // Reset states after logout
             setHospitals([]);
             setDoctors([]);
             setReviews([]);
             setSelectedHospital(null);
             setSelectedDoctor(null);
-            setActiveSection('hospitals'); // Go back to default section (which will show login)
+            setActiveSection('hospitals');
             setLoginEmail('');
             setLoginPassword('');
             setIsAdminLoggedIn(false);
         } catch (error) {
-            console.error("Admin: Logout error:", error);
+            console.error("Logout error:", error);
             showMessage(`Logout failed: ${error.message}`, 'error');
         } finally {
             setLoading(false);
@@ -691,7 +647,6 @@ function App() {
 
         switch (activeSection) {
             case 'hospitals':
-                // Filter hospitals based on search term
                 const filteredHospitals = hospitals.filter(hospital =>
                     hospital.name.toLowerCase().includes(hospitalSearchTerm.toLowerCase()) ||
                     hospital.location.toLowerCase().includes(hospitalSearchTerm.toLowerCase())
@@ -700,8 +655,6 @@ function App() {
                 return (
                     <div>
                         <h2 className="text-2xl font-semibold text-gray-800 mb-4 border-b pb-3">Hospitals ({hospitals.length} Total)</h2>
-
-                        {/* Hospital Search Input */}
                         <div className="mb-4">
                             <input
                                 type="text"
@@ -711,8 +664,6 @@ function App() {
                                 className="w-full p-3 border border-gray-300 rounded-md focus:ring-purple-500 shadow-sm"
                             />
                         </div>
-
-                        {/* Collapsible Add New Hospital Section */}
                         <div className="mb-6">
                             <button
                                 onClick={() => setShowAddHospitalForm(!showAddHospitalForm)}
@@ -737,7 +688,6 @@ function App() {
                                 </form>
                             )}
                         </div>
-
                         <h3 className="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Existing Hospitals</h3>
                         <button
                             onClick={handleRemoveDuplicateHospitals}
@@ -789,7 +739,6 @@ function App() {
                 );
 
             case 'doctors':
-                // Filter doctors based on search term
                 const filteredDoctors = doctors.filter(doctor =>
                     doctor.name.toLowerCase().includes(doctorSearchTerm.toLowerCase()) ||
                     doctor.specialty.toLowerCase().includes(doctorSearchTerm.toLowerCase())
@@ -806,8 +755,6 @@ function App() {
                         <h2 className="text-2xl font-semibold text-gray-800 mb-4 border-b pb-3">
                             Doctors at {selectedHospital?.name} ({doctors.length} Total)
                         </h2>
-
-                        {/* Doctor Search Input */}
                         <div className="mb-4">
                             <input
                                 type="text"
@@ -817,14 +764,12 @@ function App() {
                                 className="w-full p-3 border border-gray-300 rounded-md focus:ring-purple-500 shadow-sm"
                             />
                         </div>
-
                         <h3 className="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Add New Doctor</h3>
                         <form onSubmit={handleAddDoctor} className="space-y-4 mb-8">
                             <input type="text" name="name" placeholder="Doctor Name" className="w-full p-3 border border-gray-300 rounded-md focus:ring-purple-500" required />
                             <input type="text" name="specialty" placeholder="Specialty (e.g., Cardiologist)" className="w-full p-3 border border-gray-300 rounded-md focus:ring-purple-500" required />
                             <button type="submit" className="w-full bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700 transition-colors duration-200">Add Doctor</button>
                         </form>
-
                         <h3 className="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Existing Doctors</h3>
                         {filteredDoctors.length === 0 ? (
                             <p className="text-gray-500">No doctors found matching your search or none added for this hospital yet.</p>
@@ -890,14 +835,13 @@ function App() {
                             <p className="text-gray-500">No reviews found for this doctor.</p>
                         ) : (
                             <div className="space-y-3">
-                                {reviews.map((review, reviewIndex) => ( // Changed 'index' to 'reviewIndex' for clarity
+                                {reviews.map((review, reviewIndex) => (
                                     <div key={reviewIndex} className="bg-gray-50 p-4 rounded-lg shadow-sm flex flex-col justify-between items-start">
                                         <div className="w-full flex justify-between items-start">
                                             <div>
                                                 <p className="font-semibold text-gray-800">Rating: {review.stars} stars</p>
                                                 <p className="text-sm text-gray-600 italic">"{review.comment || 'No comment provided'}"</p>
                                                 <p className="text-xs text-gray-500 mt-1">Date: {review.date || 'N/A'} (Reviewer: {review.reviewerId || 'Unknown'})
-                                                {/* NEW: Display comments count if available */}
                                                 {review.comments && review.comments.length > 0 && (
                                                     <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
                                                         {review.comments.length} Comment{review.comments.length > 1 ? 's' : ''}
@@ -918,7 +862,7 @@ function App() {
                                             <div className="w-full mt-4 pt-4 border-t border-gray-200 space-y-2">
                                                 <p className="font-semibold text-gray-700 text-sm">Comments:</p>
                                                 {review.comments.map((comment, commentIndex) => (
-                                                    <div key={commentIndex} className="bg-gray-100 p-3 rounded-md flex justify-between items-start text-sm">
+                                                    <div key={comment.date + commentIndex} className="bg-gray-100 p-3 rounded-md flex justify-between items-start text-sm">
                                                         <div>
                                                             <p className="text-gray-800">{comment.text}</p>
                                                             <p className="text-xs text-gray-500 mt-1">Date: {comment.date || 'N/A'} (Commenter: {comment.userId || 'Unknown'})</p>
@@ -950,7 +894,6 @@ function App() {
             <header className="bg-gradient-to-r from-purple-700 to-indigo-600 text-white p-4 shadow-lg">
                 <div className="container flex items-center justify-between">
                     <h1 className="text-3xl font-bold rounded-lg px-3 py-1 bg-white text-purple-800 shadow-md">RNTea Admin</h1>
-                    {/* Logout button moved here, outside <nav> but still in header */}
                     {isAdminLoggedIn && (
                         <button onClick={handleLogout} className="px-3 py-1 bg-red-500 text-white text-sm rounded-md hover:bg-red-600 transition-colors">Logout</button>
                     )}
@@ -958,10 +901,20 @@ function App() {
             </header>
 
             <main className="flex-grow container py-8">
-                <MessageBox message={message.text} type={message.type} />
-                <div className="bg-white p-6 rounded-lg shadow-xl">
-                    {renderContent()}
-                </div>
+                <FirebaseContext.Provider value={{
+                    db: dbInstance,
+                    auth: authInstance,
+                    userId: currentUserId,
+                    appId: appIdentifier,
+                    loadingFirebase: loading,
+                    showMessage: showMessage,
+                    collection, doc, getDoc, getDocs, updateDoc, deleteDoc, query, where
+                }}>
+                    <MessageBox message={message.text} type={message.type} />
+                    <div className="bg-white p-6 rounded-lg shadow-xl">
+                        {renderContent()}
+                    </div>
+                </FirebaseContext.Provider>
             </main>
 
             <ConfirmModal
@@ -974,13 +927,242 @@ function App() {
     );
 }
 
-// Mount the React app to the 'root' div defined in index.html
-// This will only run once the DOM is ready due to the script being at the end of <body>
-const rootElement = document.getElementById('root');
-if (rootElement) {
-    console.log("Attempting to mount React App..."); // Added log
-    ReactDOM.createRoot(rootElement).render(<App />);
-    console.log("React App mounted successfully.");
-} else {
-    console.error("Root element not found in DOM.");
+
+
+
+
+
+
+
+
+
+
+
+
+// src/pages/HomePage.jsx
+import React from 'react';
+import { Link } from 'react-router-dom';
+import '../index.css'; // Ensure Tailwind CSS and custom animations are applied
+
+export default function HomePage() {
+    return (
+        // Outermost container now handles the full-page background image
+        <div className="min-h-screen flex flex-col relative" style={{
+            backgroundImage: "url('https://images.unsplash.com/photo-1602595688238-9fffe12d5af3?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D')",
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat'
+        }}>
+            {/* Full-page semi-transparent overlay for text readability */}
+            <div className="absolute inset-0 bg-gray-900 opacity-60 z-0"></div>
+
+            {/* Header Section - updated with gradient background and higher z-index */}
+            <header className="bg-gradient-to-r from-green-700 to-teal-600 text-white p-4 shadow-lg z-20 relative">
+                <div className="container mx-auto flex justify-between items-center w-full">
+                    {/* Logo in the header - updated with specified classes */}
+                    <div className="text-3xl font-bold rounded-lg px-3 py-1 bg-white text-green-800 shadow-md transform hover:scale-105 transition-transform duration-200">
+                        RNTea
+                    </div>
+                    {/* Navigation Links */}
+                    <nav className="space-x-6 text-lg">
+                        <Link to="/reviews" className="text-white hover:text-green-200 transition-colors duration-200">REVIEWS</Link>
+                        <Link to="/about" className="text-white hover:text-green-200 transition-colors duration-200">ABOUT</Link>
+                        <Link to="/contact" className="text-white hover:text-green-200 transition-colors duration-200">CONTACT US</Link>
+                    </nav>
+                </div>
+            </header>
+
+            {/* Main Content Area - placed above the overlay (z-index 10) */}
+            <main className="flex-grow flex items-center justify-center p-4 relative z-10">
+                <div className="bg-white bg-opacity-90 p-8 rounded-2xl shadow-2xl max-w-2xl w-full text-center transform scale-95 fade-in-up delay-400ms">
+                    <h1 className="text-4xl sm:text-5xl font-extrabold text-gray-800 mb-6 leading-tight fade-in-up delay-600ms">
+                        Welcome to RNTea: Rate, Navigate, Trust
+                    </h1>
+                    <p className="text-xl sm:text-2xl text-gray-600 mb-8 fade-in-up delay-800ms">
+                        Do you really trust your Doctors? Let's hear from experienced RNs for a change.
+                    </p>
+                    <div className="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-6">
+                        <Link to="/rn" className="block w-full sm:w-auto">
+                            <button className="w-full px-8 py-5 bg-green-700 text-white text-xl font-semibold rounded-xl
+                                           shadow-lg hover:bg-green-800 transition-all duration-300 transform hover:scale-105
+                                           focus:outline-none focus:ring-4 focus:ring-green-400
+                                           button-hover-effect scale-in delay-1000ms">
+                                RN
+                            </button>
+                        </Link>
+                        <Link to="/reviews" className="block w-full sm:w-auto">
+                            <button className="w-full px-8 py-5 bg-teal-600 text-white text-xl font-semibold rounded-xl
+                                           shadow-lg hover:bg-teal-700 transition-all duration-300 transform hover:scale-105
+                                           focus:outline-none focus:ring-4 focus:ring-teal-300
+                                           button-hover-effect scale-in delay-1200ms">
+                                REVIEWS
+                            </button>
+                        </Link>
+                    </div>
+
+                    <p className="text-sm text-gray-500 mt-12 fade-in-up delay-1400ms">
+                        RNs! We do not share identity of the individual leaving the review.
+                    </p>
+                </div>
+            </main>
+
+            {/* Footer - placed above the overlay (z-index 10) */}
+            <footer className="bg-gray-800 text-white p-4 text-center mt-8 shadow-inner relative z-10">
+                <div className="container text-sm">
+                    <p>&copy; 2025 RNTea. All rights reserved.</p>
+                    <p className="mt-2 text-gray-400">Disclaimer: This is a demo.</p>
+                </div>
+            </footer>
+        </div>
+    );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+// src/pages/AboutPage.jsx
+import React from 'react';
+import { Link } from 'react-router-dom';
+import '../index.css'; // Ensure Tailwind CSS and custom animations are applied
+
+export default function AboutPage() {
+    return (
+        <div className="min-h-screen flex flex-col bg-gray-100">
+            {/* Header Section (consistent with HomePage) */}
+            <header className="bg-gradient-to-r from-green-700 to-teal-600 text-white p-4 shadow-lg z-20 relative">
+                <div className="container mx-auto flex justify-between items-center w-full">
+                    <Link to="/" className="text-3xl font-bold rounded-lg px-3 py-1 bg-white text-green-800 shadow-md transform hover:scale-105 transition-transform duration-200">
+                        RNTea
+                    </Link>
+                    <nav className="space-x-6 text-lg">
+                        <Link to="/reviews" className="text-white hover:text-green-200 transition-colors duration-200">REVIEWS</Link>
+                        <Link to="/about" className="text-white hover:text-green-200 transition-colors duration-200">ABOUT</Link>
+                        <Link to="/contact" className="text-white hover:text-green-200 transition-colors duration-200">CONTACT US</Link>
+                    </nav>
+                </div>
+            </header>
+
+            {/* Main Content Area */}
+            <main className="flex-grow">
+                {/* Hero Section */}
+                <section className="relative bg-gradient-to-br from-blue-50 to-blue-200 py-20 px-4 text-center overflow-hidden">
+                    <div className="container animated-section flex flex-col items-center justify-center min-h-[50vh]">
+                        <h1 className="text-5xl md:text-6xl font-extrabold text-gray-900 mb-6 animated-text">
+                            Empowering Your <span className="text-teal-600">Healthcare Choices</span>
+                        </h1>
+                        <p className="text-lg md:text-xl text-gray-700 max-w-3xl mb-8 animated-text" style={{ animationDelay: '0.3s' }}>
+                            At RNTea, we believe in transparency and community to help you find the best care.
+                            Discover insights, share experiences, and make informed decisions with confidence.
+                        </p>
+                        <img src="https://placehold.co/800x450/4ade80/FFFFFF?text=Diverse+Women+in+Healthcare+Tech" alt="Diverse women collaborating in healthcare tech"
+                             className="mt-8 rounded-xl shadow-2xl w-full max-w-4xl h-auto animated-img" style={{ animationDelay: '0.6s' }} />
+                    </div>
+                </section>
+
+                {/* Our Mission Section */}
+                <section className="py-16 px-4 bg-white">
+                    <div className="container flex flex-col md:flex-row items-center gap-10 animated-section">
+                        <div className="md:w-1/2">
+                            <img src="https://placehold.co/600x400/818cf8/FFFFFF?text=Woman+Doctor+Consulting" alt="Woman doctor consulting with patient"
+                                 className="rounded-xl shadow-lg w-full h-auto animated-img" style={{ animationDelay: '0.1s' }} />
+                        </div>
+                        <div className="md:w-1/2 text-center md:text-left">
+                            <h2 className="text-4xl font-bold text-gray-800 mb-6 animated-text" style={{ animationDelay: '0.3s' }}>Our Mission: Clarity, Compassion, Community</h2>
+                            <p className="text-lg text-gray-600 mb-4 animated-text" style={{ animationDelay: '0.5s' }}>
+                                We are a team driven by the vision of a healthier, more informed world. Our platform is built on the pillars of **transparency, user-centric design, and reliable information**. We aim to empower individuals to navigate the complexities of healthcare with ease and confidence.
+                            </p>
+                            <p className="text-lg text-gray-600 animated-text" style={{ animationDelay: '0.7s' }}>
+                                RNTea provides a trusted space where real patient experiences contribute to a collective wisdom, guiding others towards optimal care.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Why Choose Us / Our Values Section */}
+                <section className="py-16 px-4 bg-gray-50">
+                    <div className="container animated-section text-center">
+                        <h2 className="text-4xl font-bold text-gray-800 mb-12 animated-text">Why Choose RNTea? Our Core Values</h2>
+                        <div className="grid md:grid-cols-3 gap-8">
+                            <div className="bg-white p-6 rounded-lg shadow-md flex flex-col items-center text-center animated-section" style={{ animationDelay: '0.1s' }}>
+                                <div className="text-teal-500 mb-4 text-5xl">💡</div> {/* Lightbulb emoji */}
+                                <h3 className="text-xl font-semibold text-gray-800 mb-3">Empowering Insights</h3>
+                                <p className="text-gray-600">Access verified reviews and comprehensive information to make the best decisions for your health.</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-lg shadow-md flex flex-col items-center text-center animated-section" style={{ animationDelay: '0.3s' }}>
+                                <div className="text-purple-500 mb-4 text-5xl">🤝</div> {/* Handshake emoji */}
+                                <h3 className="text-xl font-semibold text-gray-800 mb-3">Vibrant Community</h3>
+                                <p className="text-gray-600">Join a network of individuals sharing valuable experiences, fostering a supportive environment.</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-lg shadow-md flex flex-col items-center text-center animated-section" style={{ animationDelay: '0.5s' }}>
+                                <div className="text-yellow-500 mb-4 text-5xl">✨</div> {/* Sparkle emoji */}
+                                <h3 className="text-xl font-semibold text-gray-800 mb-3">Unwavering Integrity</h3>
+                                <p className="text-gray-600">We maintain strict standards for review authenticity, ensuring trustworthy and unbiased information.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* The Team Section */}
+                <section className="py-16 px-4 bg-blue-50">
+                    <div className="container animated-section text-center">
+                        <h2 className="text-4xl font-bold text-gray-800 mb-12 animated-text">Meet Our Visionary Team</h2>
+                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-10">
+                            <div className="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center animated-section" style={{ animationDelay: '0.1s' }}>
+                                <img src="https://placehold.co/150x150/60a5fa/FFFFFF?text=Dr.+Elara+Khan" alt="Dr. Elara Khan"
+                                     className="w-32 h-32 rounded-full object-cover mb-4 border-4 border-teal-400 animated-img" />
+                                <h3 className="text-2xl font-semibold text-gray-800">Dr. Elara Khan</h3>
+                                <p className="text-teal-600 font-medium mb-2">Founder & CEO</p>
+                                <p className="text-gray-600 text-center">A passionate advocate for patient rights and healthcare accessibility, Dr. Khan leads RNTea with a commitment to innovation.</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center animated-section" style={{ animationDelay: '0.3s' }}>
+                                <img src="https://placehold.co/150x150/d8b4fe/FFFFFF?text=Ms.+Lena+Chen" alt="Ms. Lena Chen"
+                                     className="w-32 h-32 rounded-full object-cover mb-4 border-4 border-purple-400 animated-img" />
+                                <h3 className="text-2xl font-semibold text-gray-800">Ms. Lena Chen</h3>
+                                <p className="text-purple-600 font-medium mb-2">Chief Technology Officer</p>
+                                <p className="text-gray-600 text-center">Lena, a tech visionary, crafts intuitive and secure platforms, ensuring RNTea is always at the forefront of digital healthcare solutions.</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center animated-section" style={{ animationDelay: '0.5s' }}>
+                                <img src="https://placehold.co/150x150/fde047/FFFFFF?text=Ms.+Sophia+Ross" alt="Ms. Sophia Ross"
+                                     className="w-32 h-32 rounded-full object-cover mb-4 border-4 border-yellow-400 animated-img" />
+                                <h3 className="text-2xl font-semibold text-gray-800">Ms. Sophia Ross</h3>
+                                <p className="text-yellow-600 font-medium mb-2">Head of Community Engagement</p>
+                                <p className="text-gray-600 text-center">Sophia fosters our thriving community, ensuring every voice is heard and every experience contributes to our shared knowledge.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Call to Action Section */}
+                <section className="py-16 px-4 bg-gradient-to-r from-green-600 to-teal-500 text-white text-center">
+                    <div className="container animated-section">
+                        <h2 className="text-4xl font-bold mb-6 animated-text">Join the Movement for Better Healthcare</h2>
+                        <p className="text-xl mb-8 max-w-3xl mx-auto animated-text" style={{ animationDelay: '0.3s' }}>
+                            Your voice matters. Contribute to a community that's building a more transparent and trustworthy healthcare system for everyone.
+                        </p>
+                        <Link to="/reviews"
+                           className="inline-block bg-white text-green-700 font-bold py-4 px-8 rounded-full text-lg shadow-xl hover:bg-gray-100 transform hover:scale-105 transition-all duration-300 cta-button ripple-effect" style={{ animationDelay: '0.6s' }}>
+                            Start Exploring Today!
+                        </Link>
+                    </div>
+                </section>
+            </main>
+
+            {/* Footer Section (consistent with HomePage) */}
+            <footer className="bg-gray-800 text-white p-8 text-center mt-auto shadow-inner">
+                <div className="container text-sm">
+                    <p>&copy; 2025 RNTea. All rights reserved.</p>
+                    <p className="mt-2 text-gray-400">Committed to transparency and informed healthcare choices.</p>
+                </div>
+            </footer>
+        </div>
+    );
+}
+
