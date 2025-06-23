@@ -1,28 +1,25 @@
-// src/main.jsx
+    // src/main.jsx
 
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom'; // Only BrowserRouter needed here
+    import React from 'react';
+    import ReactDOM from 'react-dom/client';
+    import { BrowserRouter } from 'react-router-dom';
 
-// Import your main App component (the new one)
-import App from './App.jsx';
+    import App from './App.jsx';
+    import './index.css';
 
-// Import global CSS
-import './index.css';
+    const rootElement = document.getElementById('root');
 
-const rootElement = document.getElementById('root');
-
-if (rootElement) {
-    console.log("Attempting to mount React App with Router from main.jsx...");
-    ReactDOM.createRoot(rootElement).render(
-        <React.StrictMode>
-            <BrowserRouter>
-                {/* The new App component will handle all routing */}
-                <App />
-            </BrowserRouter>
-        </React.StrictMode>
-    );
-    console.log("React App with Router mounted successfully from main.jsx.");
-} else {
-    console.error("Root element not found in DOM. Cannot mount React App.");
-}
+    if (rootElement) {
+        console.log("main.jsx: Root element found. Attempting to mount React App with Router...");
+        ReactDOM.createRoot(rootElement).render(
+            <React.StrictMode>
+                <BrowserRouter>
+                    <App />
+                </BrowserRouter>
+            </React.StrictMode>
+        );
+        console.log("main.jsx: React App with Router mount instruction sent.");
+    } else {
+        console.error("main.jsx: ERROR - Root element not found in DOM. Cannot mount React App.");
+    }
+    

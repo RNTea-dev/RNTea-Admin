@@ -1,7 +1,7 @@
 // src/App.jsx
 
 import React, { useState, useEffect, useCallback, createContext } from 'react';
-import { Routes, Route, Link, useLocation } from 'react-router-dom'; // Import useLocation
+import { Routes, Route, Link, useLocation } from 'react-router-dom';
 
 // Firebase imports
 import { initializeApp } from 'firebase/app';
@@ -27,16 +27,10 @@ import {
 } from 'firebase/firestore';
 
 // Import Page Components
-// Re-adding explicit .jsx extension for robust path resolution
-import AdminPanel from './pages/AdminPanel.jsx';
 import HomePage from './pages/HomePage.jsx';
-import AboutPage from './pages/AboutPage.jsx';
-import QueryPage from './pages/QueryPage.jsx';
-import QueryViewPage from './pages/QueryViewPage.jsx';
-import ContactPage from './pages/ContactPage.jsx';
+import ReviewsHubPage from './pages/ReviewsHubPage.jsx'; // Renamed from QueryViewPage
 
 // Import Reusable Components
-// Re-adding explicit .jsx extension for robust path resolution
 import MessageBox from './components/MessageBox.jsx';
 
 // Create a Firebase Context to pass instances down the component tree
@@ -47,186 +41,268 @@ const canvasFirebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.par
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : null;
 
-// IMPORTANT: Firebase Configuration - REPLACE WITH YOUR ACTUAL CONFIG
-const firebaseConfig = {
-  apiKey: "AIzaSyBEwSVX9UY7-MNxeYwdbY0ZmDuXzYyt56g",
-  authDomain: "rntea-cca78.firebaseapp.com",
-  projectId: "rntea-cca78",
-  storageBucket: "rntea-cca78.firebasestorage.app",
-  messagingSenderId: "806310857835",
-  appId: "1:806310857835:web:b03b05847c818ee4fe352e",
-  measurementId: "G-ZKZBPS9FGE"
+// Firebase configuration from the provided index.html snippet (for default fallback)
+const defaultFirebaseConfig = {
+    apiKey: "AIzaSyBEwSVX9UY7-MNxeYwdbY0ZmDuXzYyt56g",
+    authDomain: "rntea-cca78.firebaseapp.com",
+    projectId: "rntea-cca78",
+    storageBucket: "rntea-cca78.firebasestorage.app",
+    messagingSenderId: "806310857835",
+    appId: "1:806310857835:web:b03b05847c818ee4fe352e",
+    measurementId: "G-ZKZBPS9FGE"
 };
 
-// For the purpose of this example, we'll derive a consistent 'appId' for Firestore paths.
-const appIdentifier = canvasAppId || firebaseConfig.projectId;
+// --- Error Boundary Component (for debugging purposes) ---
+class ErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null, errorInfo: null };
+    }
 
+    static getDerivedStateFromError(error) {
+        return { hasError: true };
+    }
 
-// Define the 404 Not Found component directly within App.jsx
-function NotFoundPage() {
-    return (
-        <div className="bg-white p-6 rounded-lg shadow-xl text-center max-w-2xl mx-auto">
-            <h2 className="text-2xl font-semibold text-gray-800 mb-4">404 - Page Not Found</h2>
-            <p className="text-gray-600">The page you are looking for does not exist.</p>
-            <Link to="/" className="text-blue-600 hover:underline mt-4 block">Go to Home</Link>
-        </div>
-    );
+    componentDidCatch(error, errorInfo) {
+        console.error("App.jsx ErrorBoundary: Uncaught error:", error, errorInfo);
+        this.setState({ error: error, errorInfo: errorInfo });
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="flex flex-col items-center justify-center min-h-screen bg-red-100 text-red-800 p-4 rounded-lg shadow-lg m-4">
+                    <h1 className="text-3xl font-bold mb-4">Oops! Something went wrong in App.jsx!</h1>
+                    <p className="text-lg mb-2 text-center">There was an issue rendering the application. Details below:</p>
+                    <details className="mt-4 text-left p-4 bg-red-50 rounded-lg border border-red-200 overflow-auto max-w-lg">
+                        <summary className="font-semibold cursor-pointer text-red-700">Click for Error Details</summary>
+                        <pre className="mt-2 text-sm whitespace-pre-wrap break-words font-mono text-red-900">{this.state.error && this.state.error.toString()}</pre>
+                        {this.state.errorInfo && (
+                            <pre className="mt-2 text-xs text-red-600 font-mono whitespace-pre-wrap break-words">
+                                Component Stack: {this.state.errorInfo.componentStack}
+                            </pre>
+                        )}
+                    </details>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
 }
+// --- End Error Boundary Component ---
 
 
-export default function App() {
-    // Get current location pathname for conditional navigation rendering
-    const location = useLocation();
-
-    // State for Firebase instances and user info
-    const [firebaseApp, setFirebaseApp] = useState(null);
+function App() {
+    const [firebaseAppInstance, setFirebaseAppInstance] = useState(null);
     const [db, setDb] = useState(null);
     const [auth, setAuth] = useState(null);
-    const [userId, setUserId] = useState(null);
+    const [currentUserId, setCurrentUserId] = useState(null);
+    const [authReady, setAuthReady] = useState(false);
     const [loadingFirebase, setLoadingFirebase] = useState(true);
     const [message, setMessage] = useState({ text: '', type: '' });
+    const location = useLocation();
 
-    // Callback for displaying transient messages (success/error)
-    const showMessage = useCallback((text, type) => {
-        setMessage({ text, type });
-        const timer = setTimeout(() => setMessage({ text: '', type: '' }), 5000);
-        return () => clearTimeout(timer);
-    }, []);
+    const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
-    // Effect: Initialize Firebase App and Services, and set up Auth State Listener (runs once)
     useEffect(() => {
-        try {
-            const appInstance = initializeApp(firebaseConfig);
-            const authInstance = getAuth(appInstance);
-            const dbInstance = getFirestore(appInstance);
+        console.log("App.jsx: useEffect for Firebase Initialization triggered.");
+        console.log("App.jsx: Current path detected by React Router:", location.pathname);
+        const initializeFirebase = async () => {
+            try {
+                const configToUse = canvasFirebaseConfig || defaultFirebaseConfig;
+                console.log("App.jsx: Firebase config being used:", configToUse);
+                const appInstance = initializeApp(configToUse);
+                const authInstance = getAuth(appInstance);
+                const dbInstance = getFirestore(appInstance);
 
-            setFirebaseApp(appInstance);
-            setAuth(authInstance);
-            setDb(dbInstance);
+                setFirebaseAppInstance(appInstance);
+                setAuth(authInstance);
+                setDb(dbInstance);
 
-            const unsubscribeAuth = onAuthStateChanged(authInstance, (user) => {
-                if (user) {
-                    setUserId(user.uid);
-                    console.log("Auth state changed, userId:", user.uid);
-                } else {
-                    setUserId(null);
-                    console.log("Auth state changed, user logged out.");
-                }
+                const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
+                    console.log("App.jsx: onAuthStateChanged - User status changed. User:", user);
+                    if (user) {
+                        setCurrentUserId(user.uid);
+                    } else {
+                        console.log("App.jsx: No user found. Attempting anonymous sign-in or custom token sign-in.");
+                        try {
+                            if (initialAuthToken) {
+                                console.log("App.jsx: Signing in with custom token...");
+                                await signInWithCustomToken(authInstance, initialAuthToken);
+                            } else {
+                                await signInAnonymously(authInstance);
+                            }
+                            setCurrentUserId(authInstance.currentUser?.uid || 'anonymous');
+                            console.log("App.jsx: Sign-in successful. Current user ID:", authInstance.currentUser?.uid);
+                        } catch (error) {
+                            console.error("App.jsx: Error during authentication (anonymous/custom token):", error);
+                            setCurrentUserId(crypto.randomUUID()); // Fallback to random ID if auth fails
+                            setMessage({ text: `Authentication failed: ${error.message}`, type: 'error' });
+                        }
+                    }
+                    setAuthReady(true);
+                    setLoadingFirebase(false);
+                    console.log("App.jsx: Firebase initialization complete. AuthReady:", true, "LoadingFirebase:", false);
+                });
+
+                return () => {
+                    console.log("App.jsx: useEffect cleanup - Unsubscribing from auth state changes.");
+                    unsubscribe();
+                };
+            } catch (error) {
+                console.error("App.jsx: FATAL ERROR: Failed to initialize Firebase application:", error);
+                setMessage({ text: 'Failed to initialize application. Please try again later.', type: 'error' });
                 setLoadingFirebase(false);
-            });
-
-            // Attempt automatic sign-in with Canvas token first
-            if (initialAuthToken) {
-                signInWithCustomToken(authInstance, initialAuthToken)
-                    .catch(tokenError => {
-                        console.error("Error signing in with __initial_auth_token:", tokenError);
-                        showMessage(`Automatic login failed: ${tokenError.message}.`, 'error');
-                        setLoadingFirebase(false);
-                    });
-            } else if (!authInstance.currentUser) {
-                // If no initial token and no current user, sign in anonymously
-                signInAnonymously(authInstance)
-                    .then(userCredential => {
-                        setUserId(userCredential.user.uid);
-                        console.log("Signed in anonymously:", userCredential.user.uid);
-                    })
-                    .catch(anonError => {
-                        console.error("Error signing in anonymously:", anonError);
-                        showMessage(`Anonymous login failed: ${anonError.message}.`, 'error');
-                    })
-                    .finally(() => {
-                        setLoadingFirebase(false);
-                    });
-            } else {
-                 setLoadingFirebase(false); // If already logged in, stop loading
+                setAuthReady(false);
             }
+        };
 
+        initializeFirebase();
+    }, [location.pathname, canvasFirebaseConfig, initialAuthToken]);
 
-            return () => unsubscribeAuth(); // Clean up the listener on component unmount
-
-        } catch (error) {
-            console.error("Firebase Initialization Error:", error);
-            let errorMessage = `Failed to initialize Firebase: ${error.message}.`;
-            if (error.code === 'auth/api-key-not-valid') {
-                errorMessage += " Please double-check your Firebase API key in firebaseConfig.";
-            }
-            showMessage({ text: errorMessage, type: 'error' });
-            setLoadingFirebase(false);
-        }
-    }, [firebaseConfig, initialAuthToken, showMessage]);
-
-
-    // The Firebase context value to be provided to consumers
-    const firebaseContextValue = {
+    const firebaseContextValue = React.useMemo(() => ({
+        app: firebaseAppInstance,
         db,
         auth,
-        userId,
-        appId: appIdentifier,
-        loadingFirebase,
-        showMessage, // Pass the showMessage function
-        // Pass Firestore functions directly so they don't need to be imported in every child
-        collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, arrayUnion
-    };
+        currentUserId,
+        authReady,
+        appId: canvasAppId || 'rntea-cca78',
+        setMessage
+    }), [firebaseAppInstance, db, auth, currentUserId, authReady, canvasAppId, setMessage]);
+
+    const handleMobileNavToggle = useCallback(() => {
+        setIsMobileNavOpen(prev => !prev);
+        document.body.style.overflow = !isMobileNavOpen ? 'hidden' : '';
+    }, [isMobileNavOpen]);
+
+    const handleMobileNavLinkClick = useCallback(() => {
+        setIsMobileNavOpen(false);
+        document.body.style.overflow = '';
+    }, []);
+
+    const showMessage = useCallback((text, type) => {
+        setMessage({ text, type });
+        setTimeout(() => setMessage({ text: '', type: '' }), 5000);
+    }, []);
+
+    const isLinkActive = useCallback((path) => {
+        if (path === '/') return location.pathname === '/';
+        if (path === '/reviews') return location.pathname === '/reviews';
+        if (path.startsWith('/#')) {
+            const section = path.substring(2);
+            return location.pathname === '/' && location.hash === `#${section}`;
+        }
+        return false;
+    }, [location.pathname, location.hash]);
+
 
     return (
-        // Apply a base background color here if desired for the entire app under the header/footer
-        <div className="flex flex-col min-h-screen bg-gray-100 font-inter">
-            {/* Header Section */}
-            <header className="bg-gradient-to-r from-green-700 to-teal-600 text-white py-4 shadow-lg z-20 relative">
-                {/* This div contains both the logo and the navigation links */}
-                <div className="w-full flex items-center justify-between px-4">
-                    {/* Added ml-4 to move RNTea to the right by a small amount */}
-                    <Link to="/" className="text-3xl font-bold rounded-lg px-3 py-1 bg-white text-green-800 shadow-md transform hover:scale-105 transition-transform duration-200 ml-10">
-                        <h1>RNTea</h1>
-                    </Link>
-                    {/* Added pr-4 to the nav to shift it slightly left and changed text size to text-base */}
-                    <nav className="pr-4">
-                        <ul className="flex space-x-6">
-                            {location.pathname !== '/' && ( // Conditionally render HOME link
-                                <li><Link to="/" className="hover:text-teal-200 transition-colors duration-200 hover:scale-105 transform font-semibold text-base">HOME</Link></li>
-                            )}
-                            {location.pathname !== '/reviews' && ( // Conditionally render REVIEWS link
-                                <li><Link to="/reviews" className="hover:text-teal-200 transition-colors duration-200 hover:scale-105 transform font-semibold text-base">REVIEWS</Link></li>
-                            )}
-                            {location.pathname !== '/about' && ( // Conditionally render ABOUT link
-                                <li><Link to="/about" className="hover:text-teal-200 transition-colors duration-200 hover:scale-105 transform font-semibold text-base">ABOUT</Link></li>
-                            )}
-                            {location.pathname !== '/contact' && ( // Conditionally render CONTACT US link
-                                <li><Link to="/contact" className="hover:text-teal-200 transition-colors duration-200 hover:scale-105 transform font-semibold text-base">CONTACT US</Link></li>
-                            )}
-                            {/* Changed Admin link text to LOGIN */}
-                            {location.pathname !== '/admin' && ( // Conditionally render ADMIN link
-                                <li><Link to="/admin" className="hover:text-teal-200 transition-colors duration-200 hover:scale-105 transform font-semibold text-base">LOGIN</Link></li>
-                            )}
-                        </ul>
-                    </nav>
+        <div className="min-h-screen flex flex-col">
+            <header className="bg-white shadow-sm py-8 px-6 md:px-10 lg:px-16 flex justify-between items-center rounded-b-lg fixed top-0 w-full z-30">
+                <Link to="/" className="text-3xl font-bold text-gray-800 rntea-brand">RNTea</Link>
+                <nav className="hidden md:block">
+                    <ul className="flex space-x-6">
+                        <li>
+                            <Link
+                                to="/#about"
+                                className={`text-lg text-gray-700 font-medium animated-link ${isLinkActive('/#about') ? 'font-bold' : ''}`}
+                            >
+                                About
+                            </Link>
+                        </li>
+                        <li>
+                            <Link
+                                to="/reviews"
+                                className={`text-lg text-gray-700 font-medium animated-link ${isLinkActive('/reviews') ? 'font-bold' : ''}`}
+                            >
+                                Reviews
+                            </Link>
+                        </li>
+                        <li>
+                            <Link
+                                to="/#contact"
+                                className={`text-lg text-gray-700 font-medium animated-link ${isLinkActive('/#contact') ? 'font-bold' : ''}`}
+                            >
+                                Contact
+                            </Link>
+                        </li>
+                    </ul>
+                </nav>
+                <div
+                    className={`hamburger-menu md:hidden flex flex-col justify-around w-8 h-6 cursor-pointer z-50 ${isMobileNavOpen ? 'open' : ''}`}
+                    id="hamburger-menu"
+                    onClick={handleMobileNavToggle}
+                >
+                    <div className={`hamburger-bar w-full h-0.5 bg-gray-800 rounded transition-all duration-300 transform`}></div>
+                    <div className={`hamburger-bar w-full h-0.5 bg-gray-800 rounded transition-all duration-300 transform`}></div>
+                    <div className={`hamburger-bar w-full h-0.5 bg-gray-800 rounded transition-all duration-300 transform`}></div>
                 </div>
             </header>
 
-            {/* Main Content Area - Now a flex column to ensure content grows vertically */}
-            <main className="flex-grow w-full flex flex-col">
-                {/* Message box will now be managed by the global App */}
+            <div
+                className={`mobile-nav-overlay md:hidden fixed top-0 left-0 w-full h-full bg-white bg-opacity-98 z-40 flex flex-col justify-center items-center transition-transform duration-400 ease-in-out ${isMobileNavOpen ? 'open' : ''}`}
+                id="mobile-nav-overlay"
+            >
+                <button
+                    className="absolute top-6 right-6 text-gray-800 hover:text-gray-600 text-4xl focus:outline-none z-50"
+                    onClick={handleMobileNavLinkClick}
+                    aria-label="Close navigation menu"
+                >
+                    &times;
+                </button>
+
+                <Link
+                    to="/#about"
+                    className="text-2xl text-gray-800 my-4 animated-link transition duration-300 ease-in-out hover:text-custom-beige"
+                    onClick={handleMobileNavLinkClick}
+                    style={{ animationDelay: '0.1s' }}
+                >
+                    About
+                </Link>
+                <Link
+                    to="/reviews"
+                    className="text-2xl text-gray-800 my-4 animated-link transition duration-300 ease-in-out hover:text-custom-beige"
+                    onClick={handleMobileNavLinkClick}
+                    style={{ animationDelay: '0.2s' }}
+                >
+                    Reviews
+                </Link>
+                <Link
+                    to="/#contact"
+                    className="text-2xl text-gray-800 my-4 animated-link transition duration-300 ease-in-out hover:text-custom-beige"
+                    onClick={handleMobileNavLinkClick}
+                    style={{ animationDelay: '0.3s' }}
+                >
+                    Contact
+                </Link>
+            </div>
+
+
+            <main className="flex-grow w-full flex flex-col mt-[120px]">
                 <MessageBox message={message.text} type={message.type} />
 
-                {loadingFirebase ? (
-                    <p className="text-center text-gray-500 py-8">Initializing application and Firebase...</p>
-                ) : (
-                    <FirebaseContext.Provider value={firebaseContextValue}>
-                        <Routes>
-                            <Route path="/" element={<HomePage />} />
-                            <Route path="/about" element={<AboutPage />} />
-                            <Route path="/query" element={<QueryPage />} />
-                            <Route path="/reviews" element={<QueryViewPage />} />
-                            <Route path="/contact" element={<ContactPage />} />
-                            <Route path="/admin" element={<AdminPanel />} /> {/* Admin Panel is now a route */}
-                            {/* Catch-all for 404 - now uses a dedicated component */}
-                            <Route path="*" element={<NotFoundPage />} />
-                        </Routes>
-                    </FirebaseContext.Provider>
-                )}
-            </main>
+                {/* DIAGNOSTIC: These messages confirm if Firebase auth/init is progressing */}
+                {loadingFirebase && <p className="text-center text-blue-500 py-2">App.jsx: Loading Firebase...</p>}
+                {!loadingFirebase && !authReady && <p className="text-center text-orange-500 py-2">App.jsx: Firebase Loaded, Awaiting Auth...</p>}
+                {!loadingFirebase && authReady && <p className="text-center text-green-500 py-2">App.jsx: Firebase & Auth Ready!</p>}
 
-            {/* Footer Section - REMOVED */}
+                <ErrorBoundary>
+                    {loadingFirebase ? (
+                        <p className="text-center text-gray-500 py-8">App.jsx: Initializing application and Firebase...</p>
+                    ) : (
+                        <FirebaseContext.Provider value={firebaseContextValue}>
+                            <Routes>
+                                {/* Console log here to confirm routing is active */}
+                                {console.log(`App.jsx: Route matched for path: ${location.pathname}`)}
+                                <Route path="/" element={<HomePage />} />
+                                <Route path="/reviews" element={<ReviewsHubPage />} />
+                            </Routes>
+                        </FirebaseContext.Provider>
+                    )}
+                </ErrorBoundary>
+            </main>
         </div>
     );
 }
+
+export default App;

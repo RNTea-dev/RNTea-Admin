@@ -1,22 +1,8 @@
 {
   "functions": [
     {
-      "source": "functions",
-      "codebase": "default",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*.local"
-      ],
-      "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" run lint"
-      ]
-    },
-    {
-      "source": "rntea-live",
-      "codebase": "functions",
+      "source": "rntea-live-functions",
+      "codebase": "rntea-live",      
       "ignore": [
         "node_modules",
         ".git",
@@ -30,7 +16,7 @@
     }
   ],
   "hosting": {
-    "public": "(public) dist",
+    "public": "dist", 
     "ignore": [
       "firebase.json",
       "**/.*",
