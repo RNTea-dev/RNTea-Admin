@@ -1,27 +1,38 @@
 // vite.config.js
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { resolve } from 'path';
 
-// https://vitejs.dev/config/
-export default defineConfig({
-  publicDir: 'public', // Explicitly define the public directory for static assets
-  build: {
-    outDir: 'dist', // Output to 'dist' folder in the project root
-    emptyOutDir: true, // Empty the output directory on build
-  },
-  plugins: [
-    react({
-      jsxRuntime: 'automatic', // This is the primary way to enable JSX transformation
-    }),
-  ],
-  optimizeDeps: {
-    esbuildOptions: {
-      loader: {
-        '.js': 'jsx', // This correctly tells esbuild to treat .js files as JSX during dependency optimization
+export default defineConfig(({ command, mode }) => {
+  const isMainBuild = process.env.VITE_APP_BUILD_TARGET === 'main';
+
+  return {
+    publicDir: 'public',
+    plugins: [
+      react({
+        jsxRuntime: 'automatic',
+      }),
+    ],
+    build: {
+      outDir: isMainBuild ? 'dist-main' : 'dist-admin',
+      emptyOutDir: true,
+
+      rollupOptions: {
+        // This is the CRITICAL line to ensure it points to 'src/admin.html'
+        input: isMainBuild
+          ? resolve(__dirname, 'index.html') // Path for main app
+          : resolve(__dirname, 'src/admin.html'), // CORRECTED PATH: admin.html is inside 'src'
       },
     },
-  },
-  esbuild: {
-    jsx: 'automatic', // Ensure esbuild itself processes JSX
-  }
+    optimizeDeps: {
+      esbuildOptions: {
+        loader: {
+          '.js': 'jsx',
+        },
+      },
+    },
+    esbuild: {
+      jsx: 'automatic',
+    },
+  };
 });

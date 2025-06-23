@@ -282,9 +282,9 @@ function App() {
                 <MessageBox message={message.text} type={message.type} />
 
                 {/* DIAGNOSTIC: These messages confirm if Firebase auth/init is progressing */}
-                {loadingFirebase && <p className="text-center text-blue-500 py-2">App.jsx: Loading Firebase...</p>}
-                {!loadingFirebase && !authReady && <p className="text-center text-orange-500 py-2">App.jsx: Firebase Loaded, Awaiting Auth...</p>}
-                {!loadingFirebase && authReady && <p className="text-center text-green-500 py-2">App.jsx: Firebase & Auth Ready!</p>}
+                {/* REMOVED: {loadingFirebase && <p className="text-center text-blue-500 py-2">App.jsx: Loading Firebase...</p>} */}
+                {/* REMOVED: {!loadingFirebase && !authReady && <p className="text-center text-orange-500 py-2">App.jsx: Firebase Loaded, Awaiting Auth...</p>} */}
+                {/* REMOVED: {!loadingFirebase && authReady && <p className="text-center text-green-500 py-2">App.jsx: Firebase & Auth Ready!</p>} */}
 
                 <ErrorBoundary>
                     {loadingFirebase ? (

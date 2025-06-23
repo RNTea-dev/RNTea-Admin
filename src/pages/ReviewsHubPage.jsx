@@ -118,7 +118,7 @@ const ReviewsHubPage = () => {
     const [loadingReviews, setLoadingReviews] = useState(false);
     const [noReviewsForDoctor, setNoReviewsForDoctor] = useState(false);
     const [reviewText, setReviewText] = useState('');
-    const [reviewRating, setReviewRating] = useState(0);
+    const [reviewRating, setReviewRating] = useState(0); // Corrected syntax
 
     const [showReviewSubmissionSection, setShowReviewSubmissionSection] = useState(false);
     const [showCommentInput, setShowCommentInput] = useState({});
@@ -607,7 +607,7 @@ const ReviewsHubPage = () => {
                         ref={reviewSubmissionSectionRef}
                         className={`lg:col-span-1 bg-white p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted ${showReviewSubmissionSection || window.innerWidth >= 1024 ? '' : 'hidden'}`}
                     >
-                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Write a Review for <span id="display-selected-doctor-submission" className="text-custom-beige">{selectedDoctor?.name}</span></h2>
+                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Write a Review for <span id="display-selected-doctor-submission" className="text-[#CC5500]" style={{ textShadow: 'none' }}>{selectedDoctor?.name}</span></h2>
                         <div className="mb-4">
                             <label htmlFor="review-stars" className="block text-gray-700 text-sm font-medium mb-2">Rating</label>
                             <StarRating rating={reviewRating} onRatingChange={setReviewRating} />
@@ -640,11 +640,11 @@ const ReviewsHubPage = () => {
 
                     {/* Right Column: Reviews Display Section */}
                     <section id="doctor-reviews-display" ref={doctorReviewsDisplaySectionRef} className="lg:col-span-2 bg-custom-beige p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted">
-                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Reviews for <span id="display-selected-doctor-reviews" className="text-white font-extrabold">{selectedDoctor?.name}</span></h2>
+                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Reviews for <span id="display-selected-doctor-reviews" className="text-[#CC5500] font-extrabold" style={{ textShadow: 'none' }}>{selectedDoctor?.name}</span></h2>
                         {window.innerWidth < 1024 && !showReviewSubmissionSection && (
                             <button
                                 id="add-review-mobile-btn"
-                                className="bg-blue-600 text-white px-5 py-2 rounded-md hover:bg-blue-700 transition duration-200 btn-hover-scale mb-4 w-full"
+                                className="bg-[#FFFFFF] text-gray-800 px-5 py-2 rounded-md hover:bg-gray-100 transition duration-200 btn-hover-scale mb-4 w-full"
                                 onClick={handleAddReviewMobileClick}
                             >
                                 Write a Review for {selectedDoctor?.name}

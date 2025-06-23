@@ -2,7 +2,7 @@
   "functions": [
     {
       "source": "rntea-live-functions",
-      "codebase": "rntea-live",      
+      "codebase": "rntea-live",
       "ignore": [
         "node_modules",
         ".git",
@@ -15,18 +15,36 @@
       ]
     }
   ],
-  "hosting": {
-    "public": "dist", 
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ]
-  }
+  "hosting": [ 
+    {
+      "target": "main-site", 
+      "public": "dist-main", 
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "target": "admin-site", 
+      "public": "dist-admin", 
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/admin.html" 
+        }
+      ]
+    }
+  ]
 }
