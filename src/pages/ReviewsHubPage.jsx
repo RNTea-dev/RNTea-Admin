@@ -739,7 +739,7 @@ const ReviewsHubPage = () => {
                 {/* Added defensive check for message object properties */}
                 <MessageBox message={message?.text || ''} type={message?.type || ''} />
 
-                <h1 className="text-4xl md:text-5xl font-bold text-gray-800 text-center mb-8">Share Your RNTea!</h1>
+                <h1 className="text-4xl md:text-5xl font-bold text-gray-800 text-center mb-8">Share Your RN<span className="text-[#CC5500]">Tea</span>!</h1>
 
                 {/* Hospital Selection Section */}
                 <section id="hospital-selection-section" className="bg-white p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted">
