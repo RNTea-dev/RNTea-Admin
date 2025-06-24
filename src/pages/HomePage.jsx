@@ -79,7 +79,7 @@ const HomePage = () => {
                 <div className="container mx-auto flex flex-col md:flex-row items-center gap-12">
                     <div className="md:w-1/2 flex justify-center order-2 md:order-1 animate-slide-in-left">
                         {/* Image of a collage of nurses */}
-                        <img src="Express-collage.jpg" alt="Collage of diverse medical professionals" className="rounded-lg shadow-xl border-4 border-custom-beige w-full max-w-md object-cover" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x300/F0F0F0/888888?text=Image+Not+Loaded'; }} />
+                       <img src="/Express-collage.jpg" alt="Collage of diverse medical professionals" className="rounded-lg shadow-xl border-4 border-custom-beige w-full max-w-md object-cover" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x300/F0F0F0/888888?text=Image+Not+Loaded'; }} />
                     </div>
                     <div className="md:w-1/2 text-center md:text-left order-1 md:order-2 animate-slide-in-right">
                         <h2 className="text-4xl md:text-5xl font-bold text-gray-800 mb-6">Our Philosophy</h2>
