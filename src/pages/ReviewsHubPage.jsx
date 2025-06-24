@@ -14,12 +14,85 @@ import {
     arrayUnion,
     getDoc,
     onSnapshot,
-    setDoc // Added setDoc for creating new documents
+    setDoc, // Added setDoc for creating new documents
+    deleteDoc // Added deleteDoc for deleting documents
 } from 'firebase/firestore';
 
 // Define explicit words for content filtering
 const EXPLICIT_WORDS = ['fuck', 'shit', 'asshole', 'bitch', 'cunt', 'damn', 'hell'];
 const MAX_CHAR_LIMIT = 250;
+
+// List of nursing fields for the dropdown
+const NURSING_FIELDS_UNSORTED = [
+    "Certified Nursing Assistant (CNA)",
+    "Licensed Practical Nurse (LPN) / Licensed Vocational Nurse (LVN)",
+    "Registered Nurse (RN)",
+    "Nurse Practitioner (NP)",
+    "Family Nurse Practitioner (FNP)",
+    "Adult-Gerontology Nurse Practitioner (AGNP)",
+    "Pediatric Nurse Practitioner (PNP)",
+    "Psychiatric Mental Health Nurse Practitioner (PMHNP)",
+    "Acute Care Nurse Practitioner (ACNP)",
+    "Women's Health Nurse Practitioner (WHNP)",
+    "Certified Registered Nurse Anesthetist (CRNA)",
+    "Clinical Nurse Specialist (CNS)",
+    "Certified Nurse-Midwife (CNM)",
+    "Cardiac Nurse",
+    "Critical Care Nurse (ICU Nurse)",
+    "Emergency Nurse (ER Nurse)",
+    "Oncology Nurse",
+    "Pediatric Nurse",
+    "Labor and Delivery Nurse",
+    "Neonatal Intensive Care Unit (NICU) Nurse",
+    "Medical-Surgical Nurse",
+    "Geriatric Nurse",
+    "Psychiatric/Mental Health Nurse",
+    "Home Health Nurse",
+    "Public Health Nurse",
+    "School Nurse",
+    "Perioperative Nurse (Operating Room Nurse)",
+    "Rehabilitation Nurse",
+    "Hospice Nurse / Palliative Care Nurse",
+    "Forensic Nurse",
+    "Travel Nurse",
+    "Infusion Nurse",
+    "Nephrology Nurse",
+    "Diabetic Nurse",
+    "Dermatology Nurse",
+    "Gastroenterology Nurse",
+    "Orthopedic Nurse",
+    "Urology Nurse",
+    "Wound Care Nurse",
+    "Ostomy Care Nurse",
+    "Informatics Nurse",
+    "Research Nurse",
+    "Case Management Nurse",
+    "Nurse Educator",
+    "Nurse Administrator/Manager",
+    "Occupational Health Nurse",
+    "Flight Nurse / Transport Nurse",
+    "Correctional Nurse",
+    "IV Therapy Nurse",
+    "Transplant Nurse",
+    "Genetics Nurse",
+    "Pain Management Nurse",
+    "Military Nurse",
+    "Ambulatory Care Nurse",
+    "Endoscopy Nurse",
+    "Plastic Surgery Nurse",
+    "Rural Health Nurse",
+    "Parish Nurse / Faith Community Nurse",
+    "Camp Nurse",
+    "Hyperbaric Nurse",
+    "Legal Nurse Consultant",
+    "Integrative Health Nurse"
+];
+
+// Sort the nursing fields alphabetically and add the placeholder at the beginning
+const NURSING_FIELDS = [
+    "Select your nursing field...",
+    ...NURSING_FIELDS_UNSORTED.sort()
+];
 
 /**
  * Filters content for expletives and enforces a character limit.
@@ -120,6 +193,10 @@ const ReviewsHubPage = () => {
     const [noReviewsForDoctor, setNoReviewsForDoctor] = useState(false);
     const [reviewText, setReviewText] = useState('');
     const [reviewRating, setReviewRating] = useState(0);
+    const [nursingField, setNursingField] = useState(NURSING_FIELDS[0]); // State for selected nursing field
+    const [searchQuery, setSearchQuery] = useState(''); // NEW: State for search input
+    const [filteredNursingFields, setFilteredNursingFields] = useState([]); // NEW: State for filtered suggestions
+    const [showSuggestions, setShowSuggestions] = useState(false); // NEW: State to control suggestion visibility
 
     const [showReviewSubmissionSection, setShowReviewSubmissionSection] = useState(false);
     const [showCommentInput, setShowCommentInput] = useState({});
@@ -203,13 +280,6 @@ const ReviewsHubPage = () => {
                 location: newHospitalLocation.trim()
             });
 
-            // Add a dummy doctor document and immediately delete it to create the subcollection path
-            // This is a Firestore workaround to ensure subcollections exist before direct doctor additions
-            const dummyDoctorRef = doc(collection(db, `artifacts/${appId}/public/data/hospitals/${newHospitalRef.id}/doctors`), 'dummy_placeholder');
-            await setDoc(dummyDoctorRef, { _placeholder: true });
-            await deleteDoc(dummyDoctorRef);
-
-
             showMessage('Hospital added successfully! You can now add doctors to it.', 'success');
             setNewHospitalName('');
             setNewHospitalLocation('');
@@ -270,9 +340,6 @@ const ReviewsHubPage = () => {
         setHospitalInput(hospital.name);
 
         setDoctorInput(''); // Clear doctor input
-        setSelectedDoctor(null); // Clear selected doctor
-        setReviews([]); // Clear reviews
-        setShowReviewSubmissionSection(false); // Hide review submission on mobile
         setLoadingDoctors(true);
         setNoDoctorsFound(false);
         setDoctors([]); // Clear ALL doctors for this hospital
@@ -409,11 +476,11 @@ const ReviewsHubPage = () => {
 
     const handleDoctorSelect = useCallback(async (doctor) => {
         console.log("ReviewsHubPage: handleDoctorSelect called for doctor:", doctor.name);
-        setSelectedDoctor(doctor);
+        setSelectedDoctor(doctor); // This line is crucial for the useEffect below
         setDoctorInput(doctor.name); // Keep doctor name in its search bar
         setLoadingReviews(true);
         setNoReviewsForDoctor(false);
-        setReviews([]);
+
 
         // Handle mobile view toggle for review submission form
         if (window.innerWidth < 1024) {
@@ -429,60 +496,69 @@ const ReviewsHubPage = () => {
                 doctorReviewsDisplaySectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }, 100); // Small delay to allow DOM updates
         }
+    }, [db, appId, showMessage]); // Removed doctor from dependency array as setSelectedDoctor triggers useEffect
 
-        // Setup real-time listener for reviews
-        if (!db || !appId || !doctor.hospitalId || !doctor.id) {
-            console.error("Firebase/Doctor info not fully available for onSnapshot.");
-            showMessage("Cannot load reviews: Missing Firebase or doctor details.", "error");
-            setLoadingReviews(false);
-            setNoReviewsForDoctor(true);
-            return;
-        }
+    // New useEffect for managing the onSnapshot listener based on selectedDoctor
+    useEffect(() => {
+        let unsubscribe = () => {}; // Initialize with a no-op function
 
-        const doctorDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${doctor.hospitalId}/doctors/${doctor.id}`);
-        console.log("ReviewsHubPage: Setting up onSnapshot for doctorDocRef:", doctorDocRef.path);
+        if (selectedDoctor && db && appId) {
+            const doctorDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedDoctor.hospitalId}/doctors/${selectedDoctor.id}`);
+            console.log("ReviewsHubPage: Setting up onSnapshot for doctorDocRef:", doctorDocRef.path);
 
-        const unsubscribe = onSnapshot(doctorDocRef, (docSnap) => {
-            console.log("ReviewsHubPage: onSnapshot triggered for doctorDocRef.");
-            setLoadingReviews(false);
-            if (!docSnap.exists() || !docSnap.data().ratings || docSnap.data().ratings.length === 0) {
-                console.log("ReviewsHubPage: No reviews or document data for this doctor found in snapshot.");
+            unsubscribe = onSnapshot(doctorDocRef, (docSnap) => {
+                console.log("ReviewsHubPage: onSnapshot triggered for doctorDocRef.");
+                setLoadingReviews(false);
+                if (!docSnap.exists() || !docSnap.data().ratings || docSnap.data().ratings.length === 0) {
+                    console.log("ReviewsHubPage: No reviews or document data for this doctor found in snapshot.");
+                    setNoReviewsForDoctor(true);
+                    setReviews([]);
+                } else {
+                    setNoReviewsForDoctor(false);
+                    const doctorData = docSnap.data();
+                    const fetchedReviews = doctorData.ratings || [];
+                    console.log("ReviewsHubPage: Fetched reviews from snapshot:", fetchedReviews.length);
+
+                    fetchedReviews.sort((a, b) => {
+                        const dateA = a.date ? (a.date.seconds ? a.date.seconds * 1000 : new Date(a.date).getTime()) : 0;
+                        const dateB = b.date ? (b.date.seconds ? b.date.seconds * 1000 : new Date(b.date).getTime()) : 0;
+                        return dateB - dateA;
+                    });
+
+                    // Ensure dates are converted to JS Date objects for consistent use in rendering
+                    const reviewsToDisplay = fetchedReviews.map(review => ({
+                        ...review,
+                        date: review.date && typeof review.date.toDate === 'function' ? review.date.toDate() : new Date(review.date),
+                        comments: review.comments ? review.comments.map(comment => ({
+                            ...comment,
+                            date: comment.date && typeof comment.date.toDate === 'function' ? comment.date.toDate() : new Date(comment.date)
+                        })) : []
+                    }));
+                    setReviews(reviewsToDisplay);
+                    console.log("ReviewsHubPage: Reviews state updated. Current reviews count:", reviewsToDisplay.length);
+                }
+            }, (error) => {
+                console.error("ReviewsHubPage: Error fetching reviews with onSnapshot:", error);
+                showMessage('Error loading reviews.', 'error');
+                setLoadingReviews(false);
                 setNoReviewsForDoctor(true);
-                setReviews([]);
-            } else {
-                setNoReviewsForDoctor(false);
-                const doctorData = docSnap.data();
-                const fetchedReviews = doctorData.ratings || [];
-                console.log("ReviewsHubPage: Fetched reviews from snapshot:", fetchedReviews.length);
-
-                fetchedReviews.sort((a, b) => {
-                    const dateA = a.date ? (a.date.seconds ? a.date.seconds * 1000 : new Date(a.date).getTime()) : 0;
-                    const dateB = b.date ? (b.date.seconds ? b.date.seconds * 1000 : new Date(b.date).getTime()) : 0;
-                    return dateB - dateA;
-                });
-
-                const reviewsToDisplay = fetchedReviews.map(review => ({
-                    ...review,
-                    date: review.date && typeof review.date.toDate === 'function' ? review.date.toDate() : new Date(review.date)
-                }));
-                setReviews(reviewsToDisplay);
-                console.log("ReviewsHubPage: Reviews state updated. Current reviews count:", reviewsToDisplay.length);
-            }
-        }, (error) => {
-            console.error("ReviewsHubPage: Error fetching reviews with onSnapshot:", error);
-            showMessage('Error loading reviews.', 'error');
+            });
+        } else {
+            // No doctor selected or Firebase not ready, clear reviews
+            setReviews([]);
+            setNoReviewsForDoctor(false); // Reset this state
             setLoadingReviews(false);
-            setNoReviewsForDoctor(true);
-        });
+        }
 
         return () => {
             console.log("ReviewsHubPage: Cleaning up onSnapshot listener.");
-            unsubscribe();
+            unsubscribe(); // Cleanup function
         }
-    }, [db, appId, showMessage]);
+    }, [selectedDoctor, db, appId, showMessage, setReviews, setLoadingReviews, setNoReviewsForDoctor]); // Dependencies for useEffect
+
 
     // --- Review Submission ---
-    const handleSubmitReview = useCallback(async () => {
+    const handleSubmitReview = useCallback(() => {
         console.log("ReviewsHubPage: handleSubmitReview called.");
         if (!authReady || !currentUserId) {
             showMessage('Please wait for authentication to complete or log in.', 'error');
@@ -490,6 +566,11 @@ const ReviewsHubPage = () => {
         }
         if (!selectedHospital || !selectedDoctor) {
             showMessage('Please select a hospital and doctor before submitting a review.', 'error');
+            return;
+        }
+        // Validate nursing field selection - now checks if it's the placeholder or an empty string from search input
+        if (nursingField === NURSING_FIELDS[0] || nursingField.trim() === '') {
+            showMessage('Please select or type your nursing field.', 'error');
             return;
         }
 
@@ -509,20 +590,23 @@ const ReviewsHubPage = () => {
             const newReview = {
                 stars: reviewRating,
                 comment: reviewText,
-                reviewerId: `RN-${currentUserId.substring(0, 5)}`,
+                reviewerId: `RN-${currentUserId.substring(0, 5)}`, // This will store the generic RN-ID
                 date: new Date(),
                 hospitalName: selectedHospital.name,
                 doctorName: selectedDoctor.name,
+                nursingField: nursingField, // Include nursing field from state
                 comments: []
             };
             console.log("ReviewsHubPage: Submitting new review:", newReview);
 
-            await updateDoc(doctorRef, {
+            updateDoc(doctorRef, {
                 ratings: arrayUnion(newReview)
             });
 
             setReviewText('');
             setReviewRating(0);
+            setNursingField(NURSING_FIELDS[0]); // Reset nursing field after submission
+            setSearchQuery(''); // Clear search query after submission
             showMessage('Review submitted successfully!', 'success');
             console.log('ReviewsHubPage: Review submitted successfully!');
             // The onSnapshot listener will handle re-fetching and updating the reviews state
@@ -530,7 +614,7 @@ const ReviewsHubPage = () => {
             console.error("ReviewsHubPage: Error adding review: ", e);
             showMessage(`Error submitting review: ${e.message}`, 'error');
         }
-    }, [authReady, currentUserId, selectedHospital, selectedDoctor, reviewText, reviewRating, db, appId, showMessage]);
+    }, [authReady, currentUserId, selectedHospital, selectedDoctor, reviewText, reviewRating, nursingField, db, appId, showMessage]);
 
     // --- Comment Submission ---
     const handleAddCommentToReview = useCallback(async (reviewDateMillis, commentText) => {
@@ -564,7 +648,7 @@ const ReviewsHubPage = () => {
                 console.log("ReviewsHubPage: Current ratings from doc:", updatedRatings);
 
                 const targetReviewIndex = updatedRatings.findIndex(review => {
-                    // Normalize review.date to a timestamp for comparison
+                    // Ensure comparison is always between millisecond timestamps from JS Date objects
                     const reviewDate = review.date ? (
                         typeof review.date.toDate === 'function' ? review.date.toDate().getTime() : new Date(review.date).getTime()
                     ) : 0;
@@ -576,7 +660,7 @@ const ReviewsHubPage = () => {
                     const newComment = {
                         text: commentText,
                         userId: `RN-${currentUserId.substring(0, 5)}`,
-                        date: new Date() // Store as a JS Date object initially
+                        date: new Date() // Store as a JS Date object
                     };
                     // Ensure comments array exists before pushing
                     updatedRatings[targetReviewIndex].comments = updatedRatings[targetReviewIndex].comments || [];
@@ -620,6 +704,34 @@ const ReviewsHubPage = () => {
         }
     }, []);
 
+    // NEW: Handlers for interactive search bar
+    const handleSearchInputChange = (e) => {
+        const query = e.target.value;
+        setSearchQuery(query);
+        setNursingField(query); // Update nursingField directly from input
+
+        if (query.length > 0) {
+            const filtered = NURSING_FIELDS.filter(field =>
+                // Exclude the placeholder from filtered suggestions, but include matches
+                field.toLowerCase().includes(query.toLowerCase()) && field !== NURSING_FIELDS[0]
+            );
+            setFilteredNursingFields(filtered);
+            setShowSuggestions(true);
+        } else {
+            setFilteredNursingFields([]);
+            setShowSuggestions(false);
+            setNursingField(NURSING_FIELDS[0]); // Reset if input cleared
+        }
+    };
+
+    const handleSuggestionClick = (field) => {
+        setSearchQuery(field);
+        setNursingField(field);
+        setShowSuggestions(false);
+        setFilteredNursingFields([]); // Clear filtered list after selection
+    };
+
+
     return (
         <ErrorBoundary>
             <div className="flex-grow container mx-auto px-4 py-8 md:px-6 lg:px-8 pt-20">
@@ -654,9 +766,13 @@ const ReviewsHubPage = () => {
                     <div className="text-center mb-6">
                         <button
                             onClick={() => setShowAddHospitalForm(prev => !prev)}
-                            className="text-gray-600 hover:text-custom-beige font-semibold py-2 px-4 rounded-md transition-colors"
+                            className="text-gray-600 hover:text-custom-beige font-semibold py-2 px-4 rounded-md transition-colors transform hover:scale-105 transition-transform duration-300 ease-in-out" // Added scale animation
                         >
-                            {showAddHospitalForm ? 'Hide Add Hospital Form' : 'or Add Hospital'}
+                            {showAddHospitalForm ? (
+                                'Hide Add Hospital Form'
+                            ) : (
+                                <>or <span className="text-[#CC5500]">Add Hospital</span></> // Changed text color to burnt orange
+                            )}
                         </button>
                         {showAddHospitalForm && (
                             <form ref={addHospitalFormRef} onSubmit={handleAddHospitalByUser} className="space-y-4 mt-4 p-4 border border-gray-200 rounded-md bg-gray-50">
@@ -736,9 +852,13 @@ const ReviewsHubPage = () => {
                     <div className="text-center mb-6">
                         <button
                             onClick={() => setShowAddDoctorForm(prev => !prev)}
-                            className="text-gray-600 hover:text-custom-beige font-semibold py-2 px-4 rounded-md transition-colors"
+                            className="text-gray-600 hover:text-custom-beige font-semibold py-2 px-4 rounded-md transition-colors transform hover:scale-105 transition-transform duration-300 ease-in-out" // Added scale animation
                         >
-                            {showAddDoctorForm ? 'Hide Add Doctor Form' : 'or Add Doctor'}
+                            {showAddDoctorForm ? (
+                                'Hide Add Doctor Form'
+                            ) : (
+                                <>or <span className="text-[#CC5500]">Add Doctor</span></> // Changed text color to burnt orange
+                            )}
                         </button>
                         {showAddDoctorForm && (
                             <form ref={addDoctorFormRef} onSubmit={handleAddDoctorByUser} className="space-y-4 mt-4 p-4 border border-gray-200 rounded-md bg-gray-50">
@@ -792,10 +912,40 @@ const ReviewsHubPage = () => {
                         ref={reviewSubmissionSectionRef}
                         className={`lg:col-span-1 bg-white p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted ${showReviewSubmissionSection || window.innerWidth >= 1024 ? '' : 'hidden'}`}
                     >
-                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Write a Review for <span id="display-selected-doctor-submission" className="text-custom-beige">{selectedDoctor?.name}</span></h2>
+                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Write a Review for <span id="display-selected-doctor-submission" className="text-[#CC5500]">{selectedDoctor?.name}</span></h2>
+                        {/* Star Rating */}
                         <div className="mb-4">
                             <label htmlFor="review-stars" className="block text-gray-700 text-sm font-medium mb-2">Rating</label>
                             <StarRating rating={reviewRating} onRatingChange={setReviewRating} />
+                        </div>
+                        {/* Nursing Field Search Bar with Suggestions */}
+                        <div className="mb-4 relative"> {/* relative for absolute positioning of suggestions */}
+                            <label htmlFor="nursing-field-input" className="block text-gray-700 text-sm font-medium mb-2">
+                                Which field of Nursing are you?
+                            </label>
+                            <input
+                                type="text"
+                                id="nursing-field-input"
+                                className="w-full p-3 border border-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-custom-beige"
+                                placeholder="Start typing your nursing field..."
+                                value={searchQuery}
+                                onChange={handleSearchInputChange}
+                                onFocus={() => setShowSuggestions(true)}
+                                onBlur={() => setTimeout(() => setShowSuggestions(false), 100)} // Delay to allow click on suggestion
+                            />
+                            {showSuggestions && filteredNursingFields.length > 0 && (
+                                <ul className="absolute z-10 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto mt-1">
+                                    {filteredNursingFields.map((field, index) => (
+                                        <li
+                                            key={index}
+                                            className="p-3 hover:bg-gray-100 cursor-pointer text-gray-800"
+                                            onClick={() => handleSuggestionClick(field)}
+                                        >
+                                            {field}
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
                         </div>
                         <textarea
                             id="review-text"
@@ -825,11 +975,11 @@ const ReviewsHubPage = () => {
 
                     {/* Right Column: Reviews Display Section */}
                     <section id="doctor-reviews-display" ref={doctorReviewsDisplaySectionRef} className="lg:col-span-2 bg-custom-beige p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted">
-                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Reviews for <span id="display-selected-doctor-reviews" className="text-white font-extrabold">{selectedDoctor?.name}</span></h2>
+                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Reviews for <span id="display-selected-doctor-reviews" className="text-[#CC5500] font-extrabold">{selectedDoctor?.name}</span></h2>
                         {window.innerWidth < 1024 && !showReviewSubmissionSection && (
                             <button
                                 id="add-review-mobile-btn"
-                                className="bg-blue-600 text-white px-5 py-2 rounded-md hover:bg-blue-700 transition duration-200 btn-hover-scale mb-4 w-full"
+                                className="bg-[#001346] text-white px-5 py-2 rounded-md hover:bg-[#000A2C] transition duration-200 btn-hover-scale mb-4 w-full"
                                 onClick={handleAddReviewMobileClick}
                             >
                                 Write a Review for {selectedDoctor?.name}
@@ -844,10 +994,10 @@ const ReviewsHubPage = () => {
                                 {reviews.map((review, index) => (
                                     <div key={review.date.getTime() + index} className="bg-white p-5 rounded-lg shadow-md border border-gray-200">
                                         <div className="flex justify-between items-start mb-3">
-                                            <div>
+                                            <div className="min-w-0"> {/* Added min-w-0 to allow text to wrap */}
                                                 <StarRating rating={review.stars} onRatingChange={() => {}} readOnly={true} />
-                                                <p className="text-sm text-gray-500 mt-1">
-                                                    Reviewed by {review.reviewerId} on: {review.date instanceof Date ? review.date.toLocaleDateString() : new Date(review.date.seconds * 1000).toLocaleDateString()}
+                                                <p className="text-sm text-gray-500 mt-1 break-words"> {/* Added break-words */}
+                                                    {review.nursingField} on: {review.date instanceof Date ? review.date.toLocaleDateString() : 'N/A'}
                                                 </p>
                                             </div>
                                         </div>
@@ -859,10 +1009,10 @@ const ReviewsHubPage = () => {
                                             {review.comments && review.comments.length > 0 ? (
                                                 <div className="space-y-3 mb-4">
                                                     {review.comments.map((comment, commentIndex) => (
-                                                        <div key={comment.date && (typeof comment.date.getTime === 'function' ? comment.date.getTime() : (comment.date.seconds ? new Date(comment.date.seconds * 1000).getTime() : Date.now())) + '_' + commentIndex} className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700 border border-gray-100">
+                                                        <div key={comment.date.getTime() + '_' + commentIndex} className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700 border border-gray-100">
                                                             <p>{comment.text}</p>
                                                             <p className="text-xs text-gray-500 mt-1">
-                                                                by {comment.userId} on {comment.date && typeof comment.date.toDate === 'function' ? comment.date.toDate().toLocaleDateString() : (comment.date && comment.date.seconds ? new Date(comment.date.seconds * 1000).toLocaleDateString() : 'N/A')}
+                                                                by {comment.userId} on {comment.date instanceof Date ? comment.date.toLocaleDateString() : 'N/A'}
                                                             </p>
                                                         </div>
                                                     ))}
@@ -916,4 +1066,3 @@ const ReviewsHubPage = () => {
 };
 
 export default ReviewsHubPage;
-

@@ -109,6 +109,7 @@ export default function App() { // This line is the default export
         console.log("App.jsx: Current path detected by React Router:", location.pathname);
         const initializeFirebase = async () => {
             try {
+                console.log("App.jsx: Loading Firebase..."); // Added diagnostic
                 const configToUse = canvasFirebaseConfig || defaultFirebaseConfig;
                 console.log("App.jsx: Firebase config being used:", configToUse);
                 const appInstance = initializeApp(configToUse);
@@ -118,6 +119,7 @@ export default function App() { // This line is the default export
                 setFirebaseAppInstance(appInstance);
                 setAuth(authInstance);
                 setDb(dbInstance);
+                console.log("App.jsx: Firebase Loaded, Awaiting Auth..."); // Added diagnostic
 
                 const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
                     console.log("App.jsx: onAuthStateChanged - User status changed. User:", user);
@@ -143,6 +145,7 @@ export default function App() { // This line is the default export
                     setAuthReady(true);
                     setLoadingFirebase(false);
                     console.log("App.jsx: Firebase initialization complete. AuthReady:", true, "LoadingFirebase:", false);
+                    console.log("App.jsx: Firebase & Auth Ready!"); // Added diagnostic
                 });
 
                 return () => {
@@ -280,11 +283,6 @@ export default function App() { // This line is the default export
 
             <main className="flex-grow w-full flex flex-col mt-[120px]">
                 <MessageBox message={message.text} type={message.type} />
-
-                {/* DIAGNOSTIC: These messages confirm if Firebase auth/init is progressing */}
-                {loadingFirebase && <p className="text-center text-blue-500 py-2">App.jsx: Loading Firebase...</p>}
-                {!loadingFirebase && !authReady && <p className="text-center text-orange-500 py-2">App.jsx: Firebase Loaded, Awaiting Auth...</p>}
-                {!loadingFirebase && authReady && <p className="text-center text-green-500 py-2">App.jsx: Firebase & Auth Ready!</p>}
 
                 <ErrorBoundary>
                     {loadingFirebase ? (
