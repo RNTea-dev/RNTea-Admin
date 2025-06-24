@@ -1,7 +1,7 @@
 // src/pages/AdminPanel.jsx
 
 import React, { useState, useEffect, useCallback, useContext } from 'react';
-import { FirebaseContext } from '../App.jsx'; // Import FirebaseContext from the new main App.jsx
+import { FirebaseContext } from '../admin.jsx'; // CORRECTED IMPORT PATH: Now imports from admin.jsx
 import MessageBox from '../components/MessageBox.jsx'; // Ensure MessageBox is imported with .jsx extension
 import ConfirmModal from '../components/ConfirmModal.jsx'; // Import ConfirmModal with .jsx extension
 
@@ -16,14 +16,28 @@ const AdminPanel = () => {
     const {
         db,
         auth, // auth is the auth instance, needed for signInWithEmailAndPassword, signOut
-        userId,
+        userId, // This is currentUserId from admin.jsx, passed as userId
         appId,
-        loadingFirebase, // This indicates if Firebase is globally initialized
-        // Removed showMessage from context consumption, as AdminPanel will use its local one.
+        loadingFirebase, // This now comes from context
+        message, // NEW: Message state from context
+        showAdminMessage, // NEW: Function from context
         collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, arrayUnion
     } = useContext(FirebaseContext);
 
-    // Local state variables for managing UI and data within the Admin Panel
+    // ADDED LOG: Log context values on render
+    console.log("AdminPanel: CONTEXT ON RENDER:", { db, auth, userId, appId, loadingFirebase, message, showAdminMessage });
+
+
+    // REMOVED: Local message state definition (it's now in context)
+    // const [message, setMessage] = useState({ text: '', type: '' });
+    // REMOVED: Local showAdminMessage function definition (it's now in context)
+    // const showAdminMessage = useCallback((text, type) => {
+    //     setMessage({ text, type });
+    //     setTimeout(() => setMessage({ text: '', type: '' }), 5000);
+    // }, []);
+
+
+    // Local state variables for managing UI and data within the Admin Panel (these remain local)
     const [activeSection, setActiveSection] = useState('hospitals');
     const [hospitals, setHospitals] = useState([]);
     const [doctors, setDoctors] = useState([]);
@@ -31,7 +45,6 @@ const AdminPanel = () => {
     const [selectedHospital, setSelectedHospital] = useState(null);
     const [selectedDoctor, setSelectedDoctor] = useState(null);
     const [loading, setLoading] = useState(false); // Local loading for admin panel operations
-    const [message, setMessage] = useState({ text: '', type: '' }); // Local message state for AdminPanel
     const [showConfirm, setShowConfirm] = useState(false);
     const [confirmAction, setConfirmAction] = useState(null);
 
@@ -47,29 +60,29 @@ const AdminPanel = () => {
     const [doctorSearchTerm, setDoctorSearchTerm] = useState('');
 
 
-    // Callback for displaying transient messages (success/error) locally within AdminPanel
-    const showAdminMessage = useCallback((text, type) => {
-        setMessage({ text, type });
-        setTimeout(() => setMessage({ text: '', type: '' }), 5000);
-    }, []);
-
-    // Function to check if the authenticated user is an admin
-    const checkAdminStatus = useCallback(async (uid, dbInstance) => {
-        if (!dbInstance || !appId) {
-            console.error("[AdminAuthCheck] Firestore instance or appId not provided. Cannot check admin status.");
-            showAdminMessage('Firebase database not ready for admin check. Please try refreshing.', 'error');
-            return false; // Return false on error
+    // Callback for checking admin status
+    const checkAdminStatus = useCallback(async (uidToCheck, dbInstance) => { // Renamed uid to uidToCheck for clarity
+        // ADDED LOG: Log parameters when checkAdminStatus is called
+        console.log("checkAdminStatus CALLED:", { uidToCheck, dbInstanceReady: !!dbInstance, appIdReady: !!appId });
+        if (!dbInstance || !appId || !uidToCheck) { // ADDED: !uidToCheck to prevent calls with null UID
+            console.warn("[AdminAuthCheck] Firebase not ready or UID missing for admin check."); // Changed from error to warn
+            showAdminMessage('Firebase database not ready for admin check or user ID missing.', 'error');
+            return false;
         }
         try {
-            const adminDocRef = doc(dbInstance, `artifacts/${appId}/admins`, uid);
+            const adminDocRef = doc(dbInstance, `artifacts/${appId}/admins`, uidToCheck);
+            // ADDED LOG: Log the Firestore path being accessed
+            console.log("Attempting Firestore read for admin status at path:", adminDocRef.path);
             const adminDocSnap = await getDoc(adminDocRef);
+            // ADDED LOG: Log result of Firestore read
+            console.log("Admin Doc Snap Exists:", adminDocSnap.exists(), "Admin Doc Data:", adminDocSnap.data());
             return adminDocSnap.exists();
         } catch (error) {
-            console.error("[AdminStatus] Error checking admin status:", error);
+            console.error("[AdminStatus] Error during admin status check:", error); // Clarify log message
             showAdminMessage(`Error verifying admin status: ${error.message}.`, 'error');
             return false;
         }
-    }, [appId, doc, getDoc, showAdminMessage]);
+    }, [appId, doc, getDoc, showAdminMessage]); // Removed uid from deps as it's passed as arg
 
     // Callback for fetching all hospitals from Firestore
     // Now accepts `isUserAdmin` directly to avoid dependency on `isAdminLoggedIn` state
@@ -97,7 +110,10 @@ const AdminPanel = () => {
     // Effect to check admin status on auth state change (from main App.jsx)
     // IMPORTANT: fetchHospitals is passed as a dependency now because it's called conditionally
     useEffect(() => {
-        if (auth && db && userId && !loadingFirebase) {
+        // Condition to trigger checkAdminStatus: Auth and DB are ready, userId exists, and loadingFirebase is explicitly false
+        if (auth && db && userId && loadingFirebase === false) { // ADDED: loadingFirebase === false condition
+            // ADDED LOG: Log when checkAdminStatus is triggered
+            console.log("AdminPanel useEffect: Triggering checkAdminStatus for UID:", userId);
             checkAdminStatus(userId, db).then(isAdmin => {
                 setIsAdminLoggedIn(isAdmin);
                 if (isAdmin) {
@@ -111,11 +127,24 @@ const AdminPanel = () => {
                     setSelectedHospital(null);
                     setSelectedDoctor(null);
                     setActiveSection('hospitals');
-                    showAdminMessage('Access Denied: Not authorized as an administrator.', 'error'); // Show message here
+                    showAdminMessage('Access Denied: Your account is not authorized as an administrator.', 'error'); // Updated message
                 }
             });
+        } else if (!auth || !db || loadingFirebase === true) { // When Firebase is loading
+            // ADDED LOG: Log when Firebase is still loading
+            console.log("AdminPanel useEffect: Firebase still loading or not ready (auth:", !!auth, "db:", !!db, "loadingFirebase:", loadingFirebase, ")");
+        } else if (!userId && loadingFirebase === false) { // When Firebase is ready but no user logged in
+            setIsAdminLoggedIn(false);
+            setLoading(false); // Stop internal loading for AdminPanel
+            setHospitals([]); // Clear any old data
+            setDoctors([]);
+            setReviews([]);
+            setSelectedHospital(null);
+            setSelectedDoctor(null);
+            setActiveSection('hospitals');
+            showAdminMessage('Please log in to access the Admin Panel.', 'info');
         }
-    }, [auth, db, userId, loadingFirebase, checkAdminStatus, fetchHospitals, showAdminMessage]);
+    }, [auth, db, userId, loadingFirebase, checkAdminStatus, fetchHospitals, showAdminMessage]); // ADDED loadingFirebase to deps
 
 
     // Callback for fetching doctors for a specific hospital
@@ -128,7 +157,7 @@ const AdminPanel = () => {
         try {
             const doctorsColRef = collection(db, `artifacts/${appId}/public/data/hospitals/${hospitalId}/doctors`);
             const doctorSnapshot = await getDocs(doctorsColRef);
-            const fetchedDoctors = doctorSnapshot.docs.map(document => ({ id: document.id, ...document.data() }));
+            const fetchedDoctors = doctorSnapshot.docs.map(document => ({ id: document.id, ...document.data() })); // Corrected 'docRef' to 'document' for consistency
             setDoctors(fetchedDoctors);
             showAdminMessage(`Doctors for ${selectedHospital?.name || 'selected hospital'} loaded successfully!`, 'success');
         } catch (error) {
@@ -138,6 +167,7 @@ const AdminPanel = () => {
             setLoading(false);
         }
     }, [db, appId, collection, getDocs, isAdminLoggedIn, selectedHospital, showAdminMessage]);
+
 
     // Callback for fetching reviews for a specific doctor
     const fetchReviews = useCallback(async (hospitalId, doctorId) => {
@@ -251,14 +281,14 @@ const AdminPanel = () => {
                 const uniqueHospitalsMap = new Map();
                 const duplicatesToDelete = [];
 
-                for (const docSnap of hospitalDocsSnapshot.docs) {
-                    const hospitalData = docSnap.data();
+                for (const document of hospitalDocsSnapshot.docs) {
+                    const hospitalData = document.data();
                     const compositeKey = `${hospitalData.name.toLowerCase()}|${hospitalData.location.toLowerCase()}`;
 
                     if (uniqueHospitalsMap.has(compositeKey)) {
-                        duplicatesToDelete.push({ id: docSnap.id, ref: docSnap.ref });
+                        duplicatesToDelete.push({ id: document.id, ref: document.ref });
                     } else {
-                        uniqueHospitalsMap.set(compositeKey, { id: docSnap.id, ref: docSnap.ref });
+                        uniqueHospitalsMap.set(compositeKey, { id: document.id, ref: document.ref });
                     }
                 }
 
@@ -281,7 +311,7 @@ const AdminPanel = () => {
                     }
                     showAdminMessage('Duplicate hospitals and their associated doctors/reviews deleted successfully!', 'success');
                 }
-                fetchHospitals(true); // Pass true since we are admin
+                fetchHospitals(true);
             } catch (error) {
                 console.error("Error identifying/deleting duplicate hospitals:", error);
                 showAdminMessage(`Error processing duplicates: ${error.message}`, 'error');
@@ -307,7 +337,7 @@ const AdminPanel = () => {
         try {
             const newDoctorRef = doc(collection(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors`));
             await setDoc(newDoctorRef, { name, specialty, ratings: [] });
-            showAdminMessage('Doctor added successfully!', 'success'); // Changed to showAdminMessage
+            showAdminMessage('Doctor added successfully!', 'success');
             form.reset();
             fetchDoctors(selectedHospital.id);
         } catch (error) {
@@ -324,11 +354,11 @@ const AdminPanel = () => {
         try {
             const doctorDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors`, id);
             await updateDoc(doctorDocRef, { name: newName.trim(), specialty: newSpecialty.trim() });
-            showAdminMessage('Doctor updated successfully!', 'success'); // Changed to showAdminMessage
+            showAdminMessage('Doctor updated successfully!', 'success');
             fetchDoctors(selectedHospital.id);
         } catch (error) {
             console.error("Error updating doctor:", error);
-            showAdminMessage(`Error updating doctor: ${error.message}.`, 'error'); // Changed to showAdminMessage
+            showAdminMessage(`Error updating doctor: ${error.message}.`, 'error');
         } finally {
             setLoading(false);
         }
@@ -342,11 +372,11 @@ const AdminPanel = () => {
             try {
                 const doctorDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors`, doctorId);
                 await deleteDoc(doctorDocRef);
-                showAdminMessage('Doctor deleted successfully!', 'success'); // Changed to showAdminMessage
+                showAdminMessage('Doctor deleted successfully!', 'success');
                 fetchDoctors(selectedHospital.id);
             } catch (error) {
                 console.error("Error deleting doctor:", error);
-                showAdminMessage(`Error deleting doctor: ${error.message}.`, 'error'); // Changed to showAdminMessage
+                showAdminMessage(`Error deleting doctor: ${error.message}.`, 'error');
             } finally {
                 setLoading(false);
                 setShowConfirm(false);
@@ -365,11 +395,11 @@ const AdminPanel = () => {
                 const doctorDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors`, selectedDoctor.id);
                 const updatedRatings = reviews.filter((_, index) => index !== reviewIndex);
                 await updateDoc(doctorDocRef, { ratings: updatedRatings });
-                showAdminMessage('Review deleted successfully!', 'success'); // Changed to showAdminMessage
+                showAdminMessage('Review deleted successfully!', 'success');
                 fetchReviews(selectedHospital.id, selectedDoctor.id);
             } catch (error) {
                 console.error("Error deleting review:", error);
-                showAdminMessage(`Error deleting review: ${error.message}.`, 'error'); // Changed to showAdminMessage
+                showAdminMessage(`Error deleting review: ${error.message}.`, 'error');
             } finally {
                 setLoading(false);
                 setShowConfirm(false);
@@ -418,11 +448,11 @@ const AdminPanel = () => {
                 }
 
                 await updateDoc(doctorDocRef, { ratings: updatedRatings });
-                showAdminMessage('Comment deleted successfully!', 'success'); // Changed to showAdminMessage
+                showAdminMessage('Comment deleted successfully!', 'success');
                 fetchReviews(selectedHospital.id, selectedDoctor.id);
             } catch (error) {
                 console.error("Error deleting comment:", error);
-                showAdminMessage(`Error deleting comment: ${error.message}.`, 'error'); // Changed to showAdminMessage
+                showAdminMessage(`Error deleting comment: ${error.message}.`, 'error');
             } finally {
                 setLoading(false);
                 setShowConfirm(false);
@@ -437,9 +467,10 @@ const AdminPanel = () => {
         setLoading(true);
         showAdminMessage('', ''); // Clear previous messages
         try {
-            if (auth) { // Check if auth instance exists
-                 // Corrected: Use the imported signInWithEmailAndPassword function
-                 await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
+            if (auth) {
+                 const userCredential = await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
+                 const loggedInUid = userCredential.user.uid;
+                 console.log("Login Attempt: Successfully signed in user with UID:", loggedInUid);
             } else {
                 throw new Error("Firebase Auth instance not available. Cannot log in.");
             }
@@ -454,7 +485,7 @@ const AdminPanel = () => {
             } else if (error.code === 'auth/network-request-failed') {
                 errorMessage = "Network error. Check your internet connection.";
             } else if (error.code === 'auth/api-key-not-valid') {
-                errorMessage = "Login failed. Your Firebase API key is not valid or not configured for Authentication.";
+                    errorMessage = "Login failed. Your Firebase API key is not valid or not configured for Authentication.";
             }
             showAdminMessage(errorMessage, 'error');
             setLoading(false);
@@ -463,10 +494,9 @@ const AdminPanel = () => {
 
     // Handle Logout
     const handleLogout = async () => {
-        if (!auth) return; // Check if auth instance exists
+        if (!auth) return;
         setLoading(true);
         try {
-            // Corrected: Use the imported signOut function
             await signOut(auth);
             showAdminMessage('Logged out successfully!', 'success');
             setHospitals([]);
@@ -489,7 +519,6 @@ const AdminPanel = () => {
 
     // Conditional rendering logic based on `isAdminLoggedIn` state
     const renderContent = () => {
-        // Use local 'loading' state for AdminPanel specific loading indicator
         if (loadingFirebase || loading) {
             return <p className="text-center text-gray-500 py-8">Loading application...</p>;
         }
@@ -779,8 +808,8 @@ const AdminPanel = () => {
             </header>
 
             <main className="flex-grow container py-8">
-                {/* Message Box is now a direct child in AdminPanel, consuming its local message state */}
-                <MessageBox message={message.text} type={message.type} />
+                {/* The MessageBox component is now rendered by AdminAppRoot */}
+                {/* No local message box here */}
                 <div className="bg-white p-6 rounded-lg shadow-xl">
                     {renderContent()}
                 </div>
@@ -796,4 +825,4 @@ const AdminPanel = () => {
     );
 };
 
-export default AdminPanel; // Export AdminPanel as default
+export default AdminPanel;

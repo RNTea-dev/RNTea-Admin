@@ -15,10 +15,10 @@
       ]
     }
   ],
-  "hosting": [ 
+  "hosting": [
     {
-      "target": "main-site", 
-      "public": "dist-main", 
+      "target": "main-site",
+      "public": "dist-main",
       "ignore": [
         "firebase.json",
         "**/.*",
@@ -32,8 +32,8 @@
       ]
     },
     {
-      "target": "admin-site", 
-      "public": "dist-admin", 
+      "target": "admin-site",
+      "public": "dist-admin",
       "ignore": [
         "firebase.json",
         "**/.*",
@@ -42,9 +42,12 @@
       "rewrites": [
         {
           "source": "**",
-          "destination": "/admin.html" 
+          "destination": "/admin.html"
         }
       ]
     }
-  ]
+  ],
+  "firestore": {             
+    "rules": "firestore.rules"
+  }
 }

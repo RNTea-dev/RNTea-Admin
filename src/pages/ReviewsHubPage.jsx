@@ -13,7 +13,8 @@ import {
     updateDoc,
     arrayUnion,
     getDoc,
-    onSnapshot
+    onSnapshot,
+    setDoc // Added setDoc for creating new documents
 } from 'firebase/firestore';
 
 // Define explicit words for content filtering
@@ -118,15 +119,27 @@ const ReviewsHubPage = () => {
     const [loadingReviews, setLoadingReviews] = useState(false);
     const [noReviewsForDoctor, setNoReviewsForDoctor] = useState(false);
     const [reviewText, setReviewText] = useState('');
-    const [reviewRating, setReviewRating] = useState(0); // Corrected syntax
+    const [reviewRating, setReviewRating] = useState(0);
 
     const [showReviewSubmissionSection, setShowReviewSubmissionSection] = useState(false);
     const [showCommentInput, setShowCommentInput] = useState({});
+
+    // NEW STATES for Add Hospital/Doctor forms
+    const [showAddHospitalForm, setShowAddHospitalForm] = useState(false);
+    const [newHospitalName, setNewHospitalName] = useState('');
+    const [newHospitalLocation, setNewHospitalLocation] = useState('');
+
+    const [showAddDoctorForm, setShowAddDoctorForm] = useState(false);
+    const [newDoctorName, setNewDoctorName] = useState('');
+    const [newDoctorSpecialty, setNewDoctorSpecialty] = useState('');
+
 
     // Refs for scrolling
     const doctorSelectionSectionRef = React.useRef(null);
     const doctorReviewsDisplaySectionRef = React.useRef(null);
     const reviewSubmissionSectionRef = React.useRef(null);
+    const addHospitalFormRef = React.useRef(null); // Ref for new hospital form
+    const addDoctorFormRef = React.useRef(null); // Ref for new doctor form
 
     console.log("ReviewsHubPage: Component rendered.");
 
@@ -170,6 +183,59 @@ const ReviewsHubPage = () => {
         }
     }, [authReady, db, appId, showMessage]);
 
+    // NEW FUNCTION: Handle Add Hospital (for general users)
+    const handleAddHospitalByUser = useCallback(async (e) => {
+        e.preventDefault();
+        if (!authReady || !currentUserId || !db || !appId) {
+            showMessage('You must be logged in to add a hospital.', 'error');
+            return;
+        }
+        if (!newHospitalName.trim() || !newHospitalLocation.trim()) {
+            showMessage('Please enter both hospital name and location.', 'error');
+            return;
+        }
+
+        try {
+            setLoadingHospitals(true); // Indicate loading while adding
+            const newHospitalRef = doc(collection(db, `artifacts/${appId}/public/data/hospitals`));
+            await setDoc(newHospitalRef, {
+                name: newHospitalName.trim(),
+                location: newHospitalLocation.trim()
+            });
+
+            // Add a dummy doctor document and immediately delete it to create the subcollection path
+            // This is a Firestore workaround to ensure subcollections exist before direct doctor additions
+            const dummyDoctorRef = doc(collection(db, `artifacts/${appId}/public/data/hospitals/${newHospitalRef.id}/doctors`), 'dummy_placeholder');
+            await setDoc(dummyDoctorRef, { _placeholder: true });
+            await deleteDoc(dummyDoctorRef);
+
+
+            showMessage('Hospital added successfully! You can now add doctors to it.', 'success');
+            setNewHospitalName('');
+            setNewHospitalLocation('');
+            setShowAddHospitalForm(false); // Hide the form
+            await loadHospitals(); // Reload hospitals to include the new one
+
+            // Scroll to the new hospital if it's visible in the list
+            if (addHospitalFormRef.current) {
+                setTimeout(() => {
+                    const newHospitalButton = document.querySelector(`button.bg-gray-100[data-hospital-name="${newHospitalName.trim()}"]`);
+                    if (newHospitalButton) {
+                        newHospitalButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }, 500);
+            }
+
+
+        } catch (error) {
+            console.error("ReviewsHubPage: Error adding hospital:", error);
+            showMessage(`Error adding hospital: ${error.message}`, 'error');
+        } finally {
+            setLoadingHospitals(false);
+        }
+    }, [authReady, currentUserId, db, appId, newHospitalName, newHospitalLocation, loadHospitals, showMessage]);
+
+
     // Effect to filter and update displayedHospitals whenever `hospitals` or `hospitalInput` changes
     useEffect(() => {
         console.log("ReviewsHubPage: useEffect for filtering hospitals triggered. HospitalInput:", hospitalInput, "CurrentDisplayCount:", currentHospitalDisplayCount);
@@ -211,6 +277,7 @@ const ReviewsHubPage = () => {
         setNoDoctorsFound(false);
         setDoctors([]); // Clear ALL doctors for this hospital
         setDisplayedDoctors([]); // Clear displayed doctors
+        setShowAddDoctorForm(false); // Hide add doctor form
 
         if (!db || !appId || !hospital.id) {
              showMessage("Firebase or hospital ID missing for fetching doctors.", "error");
@@ -289,6 +356,55 @@ const ReviewsHubPage = () => {
         );
         setDisplayedDoctors(filtered);
     }, [doctorInput, selectedHospital, doctors, showMessage]);
+
+    // NEW FUNCTION: Handle Add Doctor (for general users)
+    const handleAddDoctorByUser = useCallback(async (e) => {
+        e.preventDefault();
+        if (!authReady || !currentUserId || !db || !appId) {
+            showMessage('You must be logged in to add a doctor.', 'error');
+            return;
+        }
+        if (!selectedHospital || !selectedHospital.id) {
+            showMessage('Please select a hospital first to add a doctor.', 'error');
+            return;
+        }
+        if (!newDoctorName.trim() || !newDoctorSpecialty.trim()) {
+            showMessage('Please enter both doctor name and specialty.', 'error');
+            return;
+        }
+
+        try {
+            setLoadingDoctors(true); // Indicate loading while adding
+            const newDoctorRef = doc(collection(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors`));
+            await setDoc(newDoctorRef, {
+                name: newDoctorName.trim(),
+                specialty: newDoctorSpecialty.trim(),
+                ratings: [] // Initialize with empty ratings array
+            });
+
+            showMessage(`Dr. ${newDoctorName.trim()} added successfully to ${selectedHospital.name}!`, 'success');
+            setNewDoctorName('');
+            setNewDoctorSpecialty('');
+            setShowAddDoctorForm(false); // Hide the form
+            // Re-fetch doctors for the selected hospital to update the list
+            await handleHospitalSelect(selectedHospital); // This will reload doctors and re-filter them
+
+            if (addDoctorFormRef.current) {
+                setTimeout(() => {
+                    const newDoctorButton = document.querySelector(`button.bg-gray-100[data-doctor-name="${newDoctorName.trim()}"]`);
+                    if (newDoctorButton) {
+                        newDoctorButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }, 500);
+            }
+
+        } catch (error) {
+            console.error("ReviewsHubPage: Error adding doctor:", error);
+            showMessage(`Error adding doctor: ${error.message}`, 'error');
+        } finally {
+            setLoadingDoctors(false);
+        }
+    }, [authReady, currentUserId, db, appId, selectedHospital, newDoctorName, newDoctorSpecialty, showMessage, handleHospitalSelect]);
 
 
     const handleDoctorSelect = useCallback(async (doctor) => {
@@ -516,7 +632,7 @@ const ReviewsHubPage = () => {
                 {/* Hospital Selection Section */}
                 <section id="hospital-selection-section" className="bg-white p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted">
                     <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6 text-center">Which hospital are you interested in?</h2>
-                    <div className="flex flex-col md:flex-row items-center gap-4">
+                    <div className="flex flex-col md:flex-row items-center gap-4 mb-4"> {/* Added mb-4 for spacing */}
                         <input
                             type="text"
                             id="hospital-input"
@@ -530,8 +646,40 @@ const ReviewsHubPage = () => {
                             className="bg-custom-beige text-gray-800 font-bold py-3 px-6 rounded-full hover:opacity-90 transition duration-300 shadow-md w-full md:w-auto btn-hover-scale"
                             onClick={loadHospitals}
                         >
-                            Search
+                            Search Hospital {/* CHANGED TEXT */}
                         </button>
+                    </div>
+
+                    {/* NEW: Or Add Hospital Section */}
+                    <div className="text-center mb-6">
+                        <button
+                            onClick={() => setShowAddHospitalForm(prev => !prev)}
+                            className="text-gray-600 hover:text-custom-beige font-semibold py-2 px-4 rounded-md transition-colors"
+                        >
+                            {showAddHospitalForm ? 'Hide Add Hospital Form' : 'or Add Hospital'}
+                        </button>
+                        {showAddHospitalForm && (
+                            <form ref={addHospitalFormRef} onSubmit={handleAddHospitalByUser} className="space-y-4 mt-4 p-4 border border-gray-200 rounded-md bg-gray-50">
+                                <input
+                                    type="text"
+                                    placeholder="New Hospital Name"
+                                    value={newHospitalName}
+                                    onChange={(e) => setNewHospitalName(e.target.value)}
+                                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-custom-beige"
+                                    required
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Location (e.g., Boston, MA)"
+                                    value={newHospitalLocation}
+                                    onChange={(e) => setNewHospitalLocation(e.target.value)}
+                                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-custom-beige"
+                                    required
+                                />
+                                <button type="submit" className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">Submit New Hospital</button>
+                                <button type="button" onClick={() => setShowAddHospitalForm(false)} className="w-full bg-gray-400 text-white py-2 px-4 rounded-md hover:bg-gray-500 transition-colors mt-2">Cancel</button>
+                            </form>
+                        )}
                     </div>
 
                     <div className="mb-4 mt-8">
@@ -542,6 +690,8 @@ const ReviewsHubPage = () => {
                             {displayedHospitals.map((hospital) => (
                                 <button
                                     key={hospital.id}
+                                    // Added data attribute for scrolling to new hospital
+                                    data-hospital-name={hospital.name}
                                     className="bg-gray-100 text-gray-800 px-4 py-2 rounded-full hover:bg-custom-beige hover:text-gray-800 transition duration-200 btn-hover-scale"
                                     onClick={() => handleHospitalSelect(hospital)}
                                 >
@@ -564,7 +714,7 @@ const ReviewsHubPage = () => {
                 {/* Doctor Selection Section */}
                 <section id="doctor-selection-section" ref={doctorSelectionSectionRef} className={`bg-white p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted ${selectedHospital ? '' : 'hidden'}`}>
                     <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6 text-center">Select a doctor</h2>
-                    <div className="flex flex-col md:flex-row items-center gap-4 mb-6">
+                    <div className="flex flex-col md:flex-row items-center gap-4 mb-4">
                         <input
                             type="text"
                             id="doctor-input"
@@ -581,6 +731,39 @@ const ReviewsHubPage = () => {
                             Search Doctor
                         </button>
                     </div>
+
+                    {/* NEW: Or Add Doctor Section */}
+                    <div className="text-center mb-6">
+                        <button
+                            onClick={() => setShowAddDoctorForm(prev => !prev)}
+                            className="text-gray-600 hover:text-custom-beige font-semibold py-2 px-4 rounded-md transition-colors"
+                        >
+                            {showAddDoctorForm ? 'Hide Add Doctor Form' : 'or Add Doctor'}
+                        </button>
+                        {showAddDoctorForm && (
+                            <form ref={addDoctorFormRef} onSubmit={handleAddDoctorByUser} className="space-y-4 mt-4 p-4 border border-gray-200 rounded-md bg-gray-50">
+                                <input
+                                    type="text"
+                                    placeholder="New Doctor Name"
+                                    value={newDoctorName}
+                                    onChange={(e) => setNewDoctorName(e.target.value)}
+                                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-custom-beige"
+                                    required
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Specialty (e.g., Cardiologist)"
+                                    value={newDoctorSpecialty}
+                                    onChange={(e) => setNewDoctorSpecialty(e.target.value)}
+                                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-custom-beige"
+                                    required
+                                />
+                                <button type="submit" className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">Submit New Doctor</button>
+                                <button type="button" onClick={() => setShowAddDoctorForm(false)} className="w-full bg-gray-400 text-white py-2 px-4 rounded-md hover:bg-gray-500 transition-colors mt-2">Cancel</button>
+                            </form>
+                        )}
+                    </div>
+
                     <div className="mb-4">
                         <p className="text-lg font-semibold text-gray-800">Doctors with reviews at <span id="display-selected-hospital" className="text-gray-800">{selectedHospital?.name}</span>:</p>
                         <div id="doctors-list" className="flex flex-wrap gap-2 mt-2 max-h-60 overflow-y-auto border border-gray-200 rounded-md p-2">
@@ -589,6 +772,8 @@ const ReviewsHubPage = () => {
                             {displayedDoctors.map((doctor) => (
                                 <button
                                     key={doctor.id}
+                                    // Added data attribute for scrolling to new doctor
+                                    data-doctor-name={doctor.name}
                                     className="bg-gray-100 text-gray-800 px-4 py-2 rounded-full hover:bg-custom-beige hover:text-gray-800 transition duration-200 btn-hover-scale"
                                     onClick={() => handleDoctorSelect(doctor)}
                                 >
@@ -607,7 +792,7 @@ const ReviewsHubPage = () => {
                         ref={reviewSubmissionSectionRef}
                         className={`lg:col-span-1 bg-white p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted ${showReviewSubmissionSection || window.innerWidth >= 1024 ? '' : 'hidden'}`}
                     >
-                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Write a Review for <span id="display-selected-doctor-submission" className="text-[#CC5500]" style={{ textShadow: 'none' }}>{selectedDoctor?.name}</span></h2>
+                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Write a Review for <span id="display-selected-doctor-submission" className="text-custom-beige">{selectedDoctor?.name}</span></h2>
                         <div className="mb-4">
                             <label htmlFor="review-stars" className="block text-gray-700 text-sm font-medium mb-2">Rating</label>
                             <StarRating rating={reviewRating} onRatingChange={setReviewRating} />
@@ -640,11 +825,11 @@ const ReviewsHubPage = () => {
 
                     {/* Right Column: Reviews Display Section */}
                     <section id="doctor-reviews-display" ref={doctorReviewsDisplaySectionRef} className="lg:col-span-2 bg-custom-beige p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted">
-                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Reviews for <span id="display-selected-doctor-reviews" className="text-[#CC5500] font-extrabold" style={{ textShadow: 'none' }}>{selectedDoctor?.name}</span></h2>
+                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Reviews for <span id="display-selected-doctor-reviews" className="text-white font-extrabold">{selectedDoctor?.name}</span></h2>
                         {window.innerWidth < 1024 && !showReviewSubmissionSection && (
                             <button
                                 id="add-review-mobile-btn"
-                                className="bg-[#FFFFFF] text-gray-800 px-5 py-2 rounded-md hover:bg-gray-100 transition duration-200 btn-hover-scale mb-4 w-full"
+                                className="bg-blue-600 text-white px-5 py-2 rounded-md hover:bg-blue-700 transition duration-200 btn-hover-scale mb-4 w-full"
                                 onClick={handleAddReviewMobileClick}
                             >
                                 Write a Review for {selectedDoctor?.name}
@@ -731,3 +916,4 @@ const ReviewsHubPage = () => {
 };
 
 export default ReviewsHubPage;
+

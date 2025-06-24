@@ -21,7 +21,7 @@ export default defineConfig(({ command, mode }) => {
         // This is the CRITICAL line to ensure it points to 'src/admin.html'
         input: isMainBuild
           ? resolve(__dirname, 'index.html') // Path for main app
-          : resolve(__dirname, 'src/admin.html'), // CORRECTED PATH: admin.html is inside 'src'
+          : resolve(__dirname, 'admin.html'), // CORRECTED PATH: admin.html is inside 'src'
       },
     },
     optimizeDeps: {

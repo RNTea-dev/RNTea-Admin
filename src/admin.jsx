@@ -1,28 +1,43 @@
 // src/admin.jsx
-import React, { useState, useEffect, createContext, useMemo } from 'react';
+import React, { useState, useEffect, createContext, useMemo, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
 import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, arrayUnion } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth'; // Removed signInWithEmailAndPassword as it's not needed for root init
+import {
+    getFirestore,
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    setDoc,
+    updateDoc,
+    deleteDoc,
+    query,
+    where,
+    arrayUnion
+} from 'firebase/firestore';
 
 import AdminPanel from './pages/AdminPanel.jsx';
-import MessageBox from './components/MessageBox.jsx'; // AdminPanel uses MessageBox
-import ConfirmModal from './components/ConfirmModal.jsx'; // AdminPanel uses ConfirmModal
-import './index.css'; // Include shared CSS for styling
+import MessageBox from './components/MessageBox.jsx';
+import ConfirmModal from './components/ConfirmModal.jsx';
+import './index.css';
 
-// Re-create FirebaseContext (or import if you separate it) for the Admin app
 export const FirebaseContext = createContext(null);
 
-// MANDATORY: Firebase configuration and initial auth token provided by the Canvas environment.
-// Fallback to default config for local development if not in Canvas.
+// Production-ready Firebase configuration.
+// In a real production environment, for `defaultFirebaseConfig` you'd replace placeholder values
+// with your actual production Firebase project config from environment variables or a secure build process.
+// The `__firebase_config`, `__initial_auth_token`, `__app_id` are likely from a specific Canvas/Firebase setup.
+// If you are deploying to a standard Firebase Hosting, these global variables will not exist.
+// You would uncomment and use your defaultFirebaseConfig directly as the primary source.
 const canvasFirebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : null;
+const canvasAppId = typeof __app_id !== 'undefined' ? JSON.parse(__app_id) : null; // Ensure this is not JSON.parse if it's just a string
 
 const defaultFirebaseConfig = {
-    apiKey: "AIzaSyBEwSVX9UY7-MNxeYwdbY0ZmDuXzYyt56g", // Replace with your actual Firebase API Key
+    apiKey: "AIzaSyBEwSVX9UY7-MNxeYwdbY0ZmDuXzYyt56g", // REPLACE WITH YOUR ACTUAL PRODUCTION API KEY
     authDomain: "rntea-cca78.firebaseapp.com",
-    projectId: "rntea-cca78",
+    projectId: "rntea-cca78", // Your project ID
     storageBucket: "rntea-cca78.firebasestorage.app",
     messagingSenderId: "806310857835",
     appId: "1:806310857835:web:b03b05847c818ee4fe352e",
@@ -36,11 +51,17 @@ function AdminAppRoot() {
     const [currentUserId, setCurrentUserId] = useState(null);
     const [authReady, setAuthReady] = useState(false);
     const [loadingFirebase, setLoadingFirebase] = useState(true);
-    const [message, setMessage] = useState({ text: '', type: '' });
+
+    const [rootMessage, setRootMessage] = useState({ text: '', type: '' });
+    const showRootMessage = useCallback((text, type) => {
+        setRootMessage({ text, type });
+        setTimeout(() => setRootMessage({ text: '', type: '' }), 5000);
+    }, []);
 
     useEffect(() => {
         const initializeFirebase = async () => {
             try {
+                // Use canvas config if available, otherwise fallback to default config
                 const configToUse = canvasFirebaseConfig || defaultFirebaseConfig;
                 const appInstance = initializeApp(configToUse);
                 const authInstance = getAuth(appInstance);
@@ -51,64 +72,69 @@ function AdminAppRoot() {
                 setDb(dbInstance);
 
                 const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
+                    // Removed diagnostic console.log
                     if (user) {
                         setCurrentUserId(user.uid);
                     } else {
                         setCurrentUserId(null); // No user authenticated
-                        setMessage({ text: 'Please log in to access the Admin Panel.', type: 'info' });
+                        // This message will appear if no user is logged in after init.
+                        // AdminPanel's login form will then be displayed.
+                        showRootMessage('Please log in to access the Admin Panel.', 'info');
                     }
                     setAuthReady(true);
                     setLoadingFirebase(false);
+                    // Removed diagnostic console.log
                 });
 
-                if (initialAuthToken) { // Attempt automatic sign-in if custom token available
-                    try {
-                        await signInWithCustomToken(authInstance, initialAuthToken);
-                    } catch (tokenError) {
-                        console.error("Error signing in with __initial_auth_token for admin:", tokenError);
-                        setMessage({ text: `Automatic admin login failed: ${tokenError.message}. Please try manual login.`, type: 'error' });
-                    }
-                } else if (!authInstance.currentUser) {
-                     // If no custom token and no current user, Firebase auth is still loading/ready.
-                     setLoadingFirebase(false);
+                // Removed hardcoded login block and __initial_auth_token usage for production
+                // This app relies on the AdminPanel.jsx form for manual login.
+                if (!authInstance.currentUser) {
+                    setLoadingFirebase(false);
                 }
 
-                return () => unsubscribe(); // Cleanup auth listener
+                return () => {
+                    if (unsubscribe) unsubscribe();
+                };
             } catch (error) {
                 console.error("Firebase Initialization Error for Admin App:", error);
-                setMessage({ text: `Failed to initialize Firebase for admin: ${error.message}.`, type: 'error' });
+                showRootMessage(`FATAL ERROR: Failed to initialize Firebase for admin: ${error.message}. Please check console.`, 'error');
                 setLoadingFirebase(false);
                 setAuthReady(false);
             }
         };
         initializeFirebase();
-    }, []); // Empty dependency array means this runs once on mount
+    }, []); // Removed canvasFirebaseConfig, initialAuthToken from deps
 
-    // Memoize the context value to prevent unnecessary re-renders
     const firebaseContextValue = useMemo(() => ({
         app: firebaseAppInstance,
         db,
         auth,
-        currentUserId,
+        userId: currentUserId,
         authReady,
-        appId: canvasAppId || defaultFirebaseConfig.projectId, // Ensure appId is passed
-        setMessage // Pass the local setMessage function for feedback in AdminPanel
-    }), [firebaseAppInstance, db, auth, currentUserId, authReady, canvasAppId]);
+        // Use canvasAppId if available, otherwise fallback to projectId from default config
+        appId: (typeof __app_id !== 'undefined' ? JSON.parse(__app_id) : null) || defaultFirebaseConfig.projectId,
+        loadingFirebase,
+        message: rootMessage,
+        showAdminMessage: showRootMessage,
+
+        collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, arrayUnion
+    }), [
+        firebaseAppInstance, db, auth, currentUserId, authReady,
+        loadingFirebase, rootMessage, showRootMessage // Dependencies
+    ]);
 
     return (
         <FirebaseContext.Provider value={firebaseContextValue}>
-            {/* Message Box is now within this root component, managing its own messages */}
-            <MessageBox message={message.text} type={message.type} />
+            <MessageBox message={rootMessage.text} type={rootMessage.type} />
             {loadingFirebase ? (
                 <p className="text-center text-gray-500 py-8">Initializing Admin Application and Firebase...</p>
             ) : (
-                <AdminPanel /> // Render the AdminPanel component
+                <AdminPanel />
             )}
         </FirebaseContext.Provider>
     );
 }
 
-// Mount the AdminAppRoot to the 'admin-root' div in admin.html
 const adminRootElement = document.getElementById('admin-root');
 if (adminRootElement) {
     ReactDOM.createRoot(adminRootElement).render(

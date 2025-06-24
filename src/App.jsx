@@ -39,7 +39,7 @@ export const FirebaseContext = createContext(null);
 // MANDATORY: Firebase configuration and initial auth token provided by the Canvas environment.
 const canvasFirebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : null;
+const canvasAppId = typeof __app_id !== 'undefined' ? JSON.parse(__app_id) : null;
 
 // Firebase configuration from the provided index.html snippet (for default fallback)
 const defaultFirebaseConfig = {
@@ -92,7 +92,7 @@ class ErrorBoundary extends React.Component {
 // --- End Error Boundary Component ---
 
 
-function App() {
+export default function App() { // This line is the default export
     const [firebaseAppInstance, setFirebaseAppInstance] = useState(null);
     const [db, setDb] = useState(null);
     const [auth, setAuth] = useState(null);
@@ -282,9 +282,9 @@ function App() {
                 <MessageBox message={message.text} type={message.type} />
 
                 {/* DIAGNOSTIC: These messages confirm if Firebase auth/init is progressing */}
-                {/* REMOVED: {loadingFirebase && <p className="text-center text-blue-500 py-2">App.jsx: Loading Firebase...</p>} */}
-                {/* REMOVED: {!loadingFirebase && !authReady && <p className="text-center text-orange-500 py-2">App.jsx: Firebase Loaded, Awaiting Auth...</p>} */}
-                {/* REMOVED: {!loadingFirebase && authReady && <p className="text-center text-green-500 py-2">App.jsx: Firebase & Auth Ready!</p>} */}
+                {loadingFirebase && <p className="text-center text-blue-500 py-2">App.jsx: Loading Firebase...</p>}
+                {!loadingFirebase && !authReady && <p className="text-center text-orange-500 py-2">App.jsx: Firebase Loaded, Awaiting Auth...</p>}
+                {!loadingFirebase && authReady && <p className="text-center text-green-500 py-2">App.jsx: Firebase & Auth Ready!</p>}
 
                 <ErrorBoundary>
                     {loadingFirebase ? (
@@ -305,4 +305,4 @@ function App() {
     );
 }
 
-export default App;
+// export default App; // THIS LINE IS MISSING!
