@@ -1,16 +1,13 @@
 {
-  "projects": {
-    "default": "rntea-cca78",
-    "rntea-cca78": "rntea-cca78"
-  },
+  "projects": {},
   "targets": {
     "rntea-cca78": {
       "hosting": {
-        "admin-site": [
-          "admin-rntea-cca78"
-        ],
         "main-site": [
           "rntea-cca78"
+        ],
+        "admin-site": [
+          "admin-rntea-cca78"
         ]
       }
     }

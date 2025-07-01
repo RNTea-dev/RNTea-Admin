@@ -1,45 +1,57 @@
-// src/App.jsx
+// src/App.jsx - Reintroducing core components for diagnosis
 
-import React, { useState, useEffect, useCallback, createContext } from 'react';
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, createContext, useMemo } from 'react';
+import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 
 // Firebase imports
 import { initializeApp } from 'firebase/app';
 import {
     getAuth,
-    signInAnonymously,
-    signInWithCustomToken,
+    //signInAnonymously,
+    //signInWithCustomToken,
     onAuthStateChanged,
-    signOut
+    signOut, // Reintroduced
+    createUserWithEmailAndPassword, // Reintroduced
+    signInWithEmailAndPassword, // Reintroduced
+    GoogleAuthProvider, // Reintroduced
+    signInWithPopup, // Reintroduced
+    OAuthProvider, // Reintroduced
+    linkWithCredential, // Reintroduced
+    reauthenticateWithCredential, // Reintroduced
+    EmailAuthProvider, // Reintroduced
+    updateEmail, // Reintroduced
+    updatePassword, // Reintroduced
+    sendPasswordResetEmail // Reintroduced
 } from 'firebase/auth';
 import {
     getFirestore,
-    collection,
-    doc,
-    getDoc,
-    getDocs,
-    setDoc,
-    updateDoc,
-    deleteDoc,
-    query,
-    where,
-    arrayUnion
+    collection, // Reintroduced
+    doc, // Reintroduced
+    getDoc, // Reintroduced
+    getDocs, // Reintroduced
+    setDoc, // Reintroduced
+    updateDoc, // Reintroduced
+    deleteDoc, // Reintroduced
+    query, // Reintroduced
+    where, // Reintroduced
+    arrayUnion // Reintroduced
 } from 'firebase/firestore';
 
-// Import Page Components - Explicitly using .jsx extension
-import HomePage from './pages/HomePage.jsx';
-import ReviewsHubPage from './pages/ReviewsHubPage.jsx';
+// Reintroducing Page Components imports
+import HomePage from './pages/HomePage.jsx'; // Explicit .jsx extension
+import ReviewsHubPage from './pages/ReviewsHubPage.jsx'; // Explicit .jsx extension
 
-// Import Reusable Components - Explicitly using .jsx extension
-import MessageBox from './components/MessageBox.jsx';
+// Reintroducing Reusable Components imports
+import MessageBox from './components/MessageBox.jsx'; // Explicit .jsx extension
+import AuthModal from './components/AuthModal.jsx'; // Explicit .jsx extension
 
-// Create a Firebase Context to pass instances down the component tree
+// Create a Firebase Context to pass instances and auth functions down the component tree
 export const FirebaseContext = createContext(null);
 
-// MANDATORY: Firebase configuration and initial auth token provided by the Canvas environment.
+// MANDATORY: Firebase configuration and initial app ID provided by the Canvas environment.
+// Access these safely.
 const canvasFirebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-const canvasAppId = typeof __app_id !== 'undefined' ? JSON.parse(__app_id) : null;
+const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : null;
 
 // Firebase configuration from the provided index.html snippet (for default fallback)
 const defaultFirebaseConfig = {
@@ -73,7 +85,7 @@ class ErrorBoundary extends React.Component {
             return (
                 <div className="flex flex-col items-center justify-center min-h-screen bg-red-100 text-red-800 p-4 rounded-lg shadow-lg m-4">
                     <h1 className="text-3xl font-bold mb-4">Oops! Something went wrong in App.jsx!</h1>
-                    <p className="text-lg mb-2 text-center">There was an issue rendering the application. Details below:</p>
+                    <p className="text-lg mb-2 text-center">We're sorry, but there was an issue rendering the application. Details below:</p>
                     <details className="mt-4 text-left p-4 bg-red-50 rounded-lg border border-red-200 overflow-auto max-w-lg">
                         <summary className="font-semibold cursor-pointer text-red-700">Click for Error Details</summary>
                         <pre className="mt-2 text-sm whitespace-pre-wrap break-words font-mono text-red-900">{this.state.error && this.state.error.toString()}</pre>
@@ -92,24 +104,39 @@ class ErrorBoundary extends React.Component {
 // --- End Error Boundary Component ---
 
 
-export default function App() { // This line is the default export
+export default function App() {
     const [firebaseAppInstance, setFirebaseAppInstance] = useState(null);
     const [db, setDb] = useState(null);
     const [auth, setAuth] = useState(null);
     const [currentUserId, setCurrentUserId] = useState(null);
     const [authReady, setAuthReady] = useState(false);
     const [loadingFirebase, setLoadingFirebase] = useState(true);
+    // Reintroduced message and showAuthModal states
     const [message, setMessage] = useState({ text: '', type: '' });
-    const location = useLocation();
+    const [showAuthModal, setShowAuthModal] = useState(false);
 
+    // Reintroducing useLocation and useNavigate
+    const location = useLocation();
+    const navigate = useNavigate();
+    // Reintroducing mobile nav states
     const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
+
+    // Reinstated full showMessage, as MessageBox is back
+    const showMessage = useCallback((text, type) => {
+        setMessage({ text, type });
+        setTimeout(() => setMessage({ text: '', type: '' }), 5000);
+    }, []);
+
+
+    // --- Firebase Initialization and Auth State Management ---
     useEffect(() => {
         console.log("App.jsx: useEffect for Firebase Initialization triggered.");
         console.log("App.jsx: Current path detected by React Router:", location.pathname);
+
         const initializeFirebase = async () => {
             try {
-                console.log("App.jsx: Loading Firebase..."); // Added diagnostic
+                console.log("App.jsx: Loading Firebase...");
                 const configToUse = canvasFirebaseConfig || defaultFirebaseConfig;
                 console.log("App.jsx: Firebase config being used:", configToUse);
                 const appInstance = initializeApp(configToUse);
@@ -119,7 +146,7 @@ export default function App() { // This line is the default export
                 setFirebaseAppInstance(appInstance);
                 setAuth(authInstance);
                 setDb(dbInstance);
-                console.log("App.jsx: Firebase Loaded, Awaiting Auth..."); // Added diagnostic
+                console.log("App.jsx: Firebase Loaded, Awaiting Auth...");
 
                 const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
                     console.log("App.jsx: onAuthStateChanged - User status changed. User:", user);
@@ -127,25 +154,39 @@ export default function App() { // This line is the default export
                         setCurrentUserId(user.uid);
                     } else {
                         console.log("App.jsx: No user found. Attempting anonymous sign-in or custom token sign-in.");
+                        let initialAuthToken = null;
+                        try {
+                            // Safely attempt to access __initial_auth_token here
+                            initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                        } catch (e) {
+                            console.warn("App.jsx: __initial_auth_token is not declared or accessible:", e);
+                            // initialAuthToken remains null
+                        }
+
                         try {
                             if (initialAuthToken) {
                                 console.log("App.jsx: Signing in with custom token...");
                                 await signInWithCustomToken(authInstance, initialAuthToken);
                             } else {
-                                await signInAnonymously(authInstance);
+                                // Only sign in anonymously if no other user is logged in
+                                if (!authInstance.currentUser) {
+                                    await signInAnonymously(authInstance);
+                                }
                             }
-                            setCurrentUserId(authInstance.currentUser?.uid || 'anonymous');
+                            // Fallback to a random string using Math.random() if auth fails or is anonymous
+                            setCurrentUserId(authInstance.currentUser?.uid || `anon-${Math.random().toString(36).substring(2, 15)}`);
                             console.log("App.jsx: Sign-in successful. Current user ID:", authInstance.currentUser?.uid);
                         } catch (error) {
                             console.error("App.jsx: Error during authentication (anonymous/custom token):", error);
-                            setCurrentUserId(crypto.randomUUID()); // Fallback to random ID if auth fails
-                            setMessage({ text: `Authentication failed: ${error.message}`, type: 'error' });
+                            // Fallback to a random string using Math.random() if auth fails
+                            setCurrentUserId(`anon-${Math.random().toString(36).substring(2, 15)}`);
+                            showMessage(`Authentication failed: ${error.message}`, 'error');
                         }
                     }
                     setAuthReady(true);
                     setLoadingFirebase(false);
                     console.log("App.jsx: Firebase initialization complete. AuthReady:", true, "LoadingFirebase:", false);
-                    console.log("App.jsx: Firebase & Auth Ready!"); // Added diagnostic
+                    console.log("App.jsx: Firebase & Auth Ready!");
                 });
 
                 return () => {
@@ -154,26 +195,154 @@ export default function App() { // This line is the default export
                 };
             } catch (error) {
                 console.error("App.jsx: FATAL ERROR: Failed to initialize Firebase application:", error);
-                setMessage({ text: 'Failed to initialize application. Please try again later.', type: 'error' });
+                showMessage('Failed to initialize application. Please try again later.', 'error');
                 setLoadingFirebase(false);
                 setAuthReady(false);
             }
         };
 
         initializeFirebase();
-    }, [location.pathname, canvasFirebaseConfig, initialAuthToken]);
+    }, [location.pathname, canvasFirebaseConfig, showMessage]); // Dependencies remain the same
 
-    const firebaseContextValue = React.useMemo(() => ({
+    // --- Authentication Functions (passed via Context) ---
+
+    // Function to sign up with email and password
+    const signUpWithEmailPassword = useCallback(async (email, password) => {
+        if (!auth) {
+            showMessage('Firebase Auth not initialized.', 'error');
+            return null;
+        }
+        try {
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            showMessage('Account created successfully!', 'success');
+            setShowAuthModal(false);
+            return userCredential.user;
+        } catch (error) {
+            console.error("Error signing up with email/password:", error);
+            showMessage(`Sign Up Failed: ${error.message}`, 'error');
+            return null;
+        }
+    }, [auth, showMessage]);
+
+    // Function to sign in with email and password
+    const signInWithEmailPassword = useCallback(async (email, password) => {
+        if (!auth) {
+            showMessage('Firebase Auth not initialized.', 'error');
+            return null;
+        }
+        try {
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            showMessage('Signed in successfully!', 'success');
+            setShowAuthModal(false);
+            return userCredential.user;
+        }  catch (error) {
+            console.error("Error signing in with email/password:", error);
+            showMessage(`Sign In Failed: ${error.message}`, 'error');
+            return null;
+        }
+    }, [auth, showMessage]);
+
+    // Function to sign in with Apple ID
+    const signInWithApple = useCallback(async () => {
+        if (!auth) {
+            showMessage('Firebase Auth not initialized.', 'error');
+            return null;
+        }
+        try {
+            const provider = new OAuthProvider('apple.com');
+            const userCredential = await signInWithPopup(auth, provider);
+            showMessage('Signed in with Apple successfully!', 'success');
+            setShowAuthModal(false);
+            return userCredential.user;
+        } catch (error) {
+            console.error("Error signing in with Apple:", error);
+            showMessage(`Apple Sign In Failed: ${error.message}`, 'error');
+            return null;
+        }
+    }, [auth, showMessage]);
+
+    // Function to sign out the current user
+    const signOutUser = useCallback(async () => {
+        if (!auth) {
+            showMessage('Firebase Auth not initialized.', 'error');
+            return;
+        }
+        try {
+            await signOut(auth);
+            setCurrentUserId(null);
+            showMessage('Signed out successfully!', 'success');
+            // Optionally, sign back in anonymously after sign out
+            await signInAnonymously(auth);
+            setCurrentUserId(auth.currentUser?.uid || `anon-${Math.random().toString(36).substring(2, 15)}`);
+        } catch (error) {
+            console.error("Error signing out:", error);
+            showMessage(`Sign Out Failed: ${error.message}`, 'error');
+        }
+    }, [auth, showMessage]);
+
+    // Function to link anonymous account with email/password
+    const linkAnonymousWithEmailPassword = useCallback(async (email, password) => {
+        if (!auth || !auth.currentUser || !auth.currentUser.isAnonymous) {
+            showMessage('Not an anonymous user or Firebase Auth not ready.', 'error');
+            return null;
+        }
+        try {
+            const credential = EmailAuthProvider.credential(email, password);
+            const userCredential = await linkWithCredential(auth.currentUser, credential);
+            showMessage('Anonymous account linked with email/password!', 'success');
+            setShowAuthModal(false);
+            return userCredential.user;
+        }  catch (error) {
+            console.error("Error linking anonymous account with email/password:", error);
+            showMessage(`Linking Failed: ${error.message}`, 'error');
+            return null;
+        }
+    }, [auth, showMessage]);
+
+    // Function to link anonymous account with Apple
+    const linkAnonymousWithApple = useCallback(async () => {
+        if (!auth || !auth.currentUser || !auth.currentUser.isAnonymous) {
+            showMessage('Not an anonymous user or Firebase Auth not ready.', 'error');
+            return null;
+        }
+        try {
+            const provider = new OAuthProvider('apple.com');
+            const userCredential = await linkWithCredential(auth.currentUser, provider);
+            showMessage('Anonymous account linked with Apple!', 'success');
+            setShowAuthModal(false);
+            return userCredential.user;
+        } catch (error) {
+            console.error("Error linking anonymous account with Apple:", error);
+            showMessage(`Linking Failed: ${error.message}`, 'error');
+            return null;
+        }
+    }, [auth, showMessage]);
+
+    // Memoize the context value to prevent unnecessary re-renders
+    const firebaseContextValue = useMemo(() => ({
         app: firebaseAppInstance,
         db,
         auth,
         currentUserId,
         authReady,
-        appId: canvasAppId || 'rntea-cca78',
-        setMessage,
-        message // IMPORTANT: Now include the message state in the context value
-    }), [firebaseAppInstance, db, auth, currentUserId, authReady, canvasAppId, setMessage, message]); // Add message to dependencies
+        appId: canvasAppId || 'rntea-cca78', // Use canvasAppId if available, fallback to default
+        showMessage, // Pass showMessage function
+        // Reintroduced auth functions
+        signUpWithEmailPassword,
+        signInWithEmailPassword,
+        signInWithApple,
+        signOutUser,
+        linkAnonymousWithEmailPassword,
+        linkAnonymousWithApple,
+        setShowAuthModal
+    }), [
+        firebaseAppInstance, db, auth, currentUserId, authReady, canvasAppId, showMessage,
+        signUpWithEmailPassword, signInWithEmailPassword, signInWithApple, signOutUser,
+        linkAnonymousWithEmailPassword, linkAnonymousWithApple, setShowAuthModal
+    ]);
 
+
+    // Reintroducing Mobile Navigation Handlers
     const handleMobileNavToggle = useCallback(() => {
         setIsMobileNavOpen(prev => !prev);
         document.body.style.overflow = !isMobileNavOpen ? 'hidden' : '';
@@ -182,11 +351,6 @@ export default function App() { // This line is the default export
     const handleMobileNavLinkClick = useCallback(() => {
         setIsMobileNavOpen(false);
         document.body.style.overflow = '';
-    }, []);
-
-    const showMessage = useCallback((text, type) => {
-        setMessage({ text, type });
-        setTimeout(() => setMessage({ text: '', type: '' }), 5000);
     }, []);
 
     const isLinkActive = useCallback((path) => {
@@ -202,10 +366,11 @@ export default function App() { // This line is the default export
 
     return (
         <div className="min-h-screen flex flex-col">
+            {/* Reintroduced full header */}
             <header className="bg-white shadow-sm py-8 px-6 md:px-10 lg:px-16 flex justify-between items-center rounded-b-lg fixed top-0 w-full z-30">
                 <Link to="/" className="text-3xl font-bold text-gray-800 rntea-brand">RNTea</Link>
                 <nav className="hidden md:block">
-                    <ul className="flex space-x-6">
+                    <ul className="flex space-x-6 items-center">
                         <li>
                             <Link
                                 to="/#about"
@@ -230,6 +395,23 @@ export default function App() { // This line is the default export
                                 Contact
                             </Link>
                         </li>
+                        <li>
+                            {currentUserId && currentUserId !== 'anonymous' ? (
+                                <button
+                                    onClick={signOutUser}
+                                    className="bg-red-500 text-white font-bold py-2 px-4 rounded-full hover:bg-red-600 transition duration-300 shadow-md btn-hover-scale"
+                                >
+                                    Sign Out
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => setShowAuthModal(true)}
+                                    className="bg-blue-500 text-white font-bold py-2 px-4 rounded-full hover:bg-blue-600 transition duration-300 shadow-md btn-hover-scale"
+                                >
+                                    Sign In
+                                </button>
+                            )}
+                        </li>
                     </ul>
                 </nav>
                 <div
@@ -243,6 +425,7 @@ export default function App() { // This line is the default export
                 </div>
             </header>
 
+            {/* Reintroduced mobile nav overlay */}
             <div
                 className={`mobile-nav-overlay md:hidden fixed top-0 left-0 w-full h-full bg-white bg-opacity-98 z-40 flex flex-col justify-center items-center transition-transform duration-400 ease-in-out ${isMobileNavOpen ? 'open' : ''}`}
                 id="mobile-nav-overlay"
@@ -279,11 +462,26 @@ export default function App() { // This line is the default export
                 >
                     Contact
                 </Link>
+                {currentUserId && currentUserId !== 'anonymous' ? (
+                    <button
+                        onClick={() => { signOutUser(); handleMobileNavLinkClick(); }}
+                        className="bg-red-500 text-white font-bold py-2 px-4 rounded-full hover:bg-red-600 transition duration-300 shadow-md btn-hover-scale mt-4"
+                    >
+                        Sign Out
+                    </button>
+                ) : (
+                    <button
+                        onClick={() => { setShowAuthModal(true); handleMobileNavLinkClick(); }}
+                        className="bg-blue-500 text-white font-bold py-2 px-4 rounded-full hover:bg-blue-600 transition duration-300 shadow-md btn-hover-scale mt-4"
+                    >
+                        Sign In
+                    </button>
+                )}
             </div>
 
 
             <main className="flex-grow w-full flex flex-col mt-[120px]">
-                {/* MessageBox uses the message state directly from App.jsx */}
+                {/* Reintroduced MessageBox */}
                 <MessageBox message={message.text} type={message.type} />
 
                 <ErrorBoundary>
@@ -291,12 +489,20 @@ export default function App() { // This line is the default export
                         <p className="text-center text-gray-500 py-8">App.jsx: Initializing application and Firebase...</p>
                     ) : (
                         <FirebaseContext.Provider value={firebaseContextValue}>
+                            {/* Reintroduced Routes for HomePage and ReviewsHubPage */}
                             <Routes>
-                                {/* Console log here to confirm routing is active */}
                                 {console.log(`App.jsx: Route matched for path: ${location.pathname}`)}
                                 <Route path="/" element={<HomePage />} />
                                 <Route path="/reviews" element={<ReviewsHubPage />} />
+                                {/* Keeping test route for now, can remove later */}
+                                <Route path="/test-route" element={<h2 className="text-center text-2xl mt-8">This is a Test Route.</h2>} />
                             </Routes>
+                            {/* Reintroduced AuthModal conditionally */}
+                            {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
+
+                            <p className="text-center text-lg mt-4">Current User ID: {currentUserId}</p>
+                            <p className="text-center text-md mt-2">Auth Ready: {authReady ? 'Yes' : 'No'}</p>
+                            <p className="text-center text-md mt-2">App ID: {canvasAppId}</p>
                         </FirebaseContext.Provider>
                     )}
                 </ErrorBoundary>
@@ -304,4 +510,3 @@ export default function App() { // This line is the default export
         </div>
     );
 }
-

@@ -30,6 +30,10 @@ export default defineConfig(({ command, mode }) => {
     esbuild: {
       jsx: 'automatic',
     },
+    // IMPORTANT: Add the resolve configuration directly here
+    resolve: {
+      extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json']
+    }
   };
 
   // Development server configuration (`npm run dev`)
