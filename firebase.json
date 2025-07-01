@@ -1,0 +1,53 @@
+{
+  "functions": [
+    {
+      "source": "rntea-live-functions",
+      "codebase": "rntea-live",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint"
+      ]
+    }
+  ],
+  "hosting": [
+    {
+      "target": "main-site",
+      "public": "dist-main",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "target": "admin-site",
+      "public": "dist-admin",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/admin.html"
+        }
+      ]
+    }
+  ],
+  "firestore": {             
+    "rules": "firestore.rules"
+  }
+}
