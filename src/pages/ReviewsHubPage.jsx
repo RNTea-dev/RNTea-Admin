@@ -1,19 +1,17 @@
-// src/pages/ReviewsHubPage.jsx
-import React, { useState, useEffect, useCallback, useContext } from 'react';
-import { FirebaseContext } from '../App'; // Removed .jsx extension for module resolution
-import MessageBox from '../components/MessageBox'; // Removed .jsx extension for module resolution
-import StarRating from '../components/StarRating'; // Removed .jsx extension for module resolution
+import React, { useState, useEffect, useContext, useCallback } from 'react';
+import { FirebaseContext } from '../App.jsx'; // Added .jsx extension
+import StarRating from '../components/StarRating.jsx'; // Added .jsx extension
 
 // Firebase imports specific to this component
 import {
     collection,
     query,
-    getDocs, // Still useful for one-time fetches if needed, but onSnapshot is preferred for real-time
+    getDocs,
     doc,
     updateDoc,
     arrayUnion,
     getDoc,
-    onSnapshot, // Crucial for real-time updates
+    onSnapshot,
     setDoc,
     deleteDoc
 } from 'firebase/firestore';
@@ -169,7 +167,8 @@ class ErrorBoundary extends React.Component {
 
 const ReviewsHubPage = () => {
     // Destructure Firebase context values
-    const { db, currentUserId, authReady, appId, showMessage, message } = useContext(FirebaseContext);
+    // Ensure currentUserIsAnonymous is destructured here
+    const { db, currentUserId, currentUserIsAnonymous, authReady, appId, showMessage, setShowAuthModal } = useContext(FirebaseContext);
 
     // State for UI elements and data
     const [hospitalInput, setHospitalInput] = useState('');
@@ -199,12 +198,13 @@ const ReviewsHubPage = () => {
     const [showSuggestions, setShowSuggestions] = useState(false); // NEW: State to control suggestion visibility
 
     const [showReviewSubmissionSection, setShowReviewSubmissionSection] = useState(false);
-    const [showCommentInput, setShowCommentInput] = useState({}); // Corrected: Initialized with useState({})
+    const [showCommentInput, setShowCommentInput] = useState({});
+    const [commentText, setCommentText] = useState({}); // State to hold comment text for each review
 
     // NEW STATES for Add Hospital/Doctor forms
     const [showAddHospitalForm, setShowAddHospitalForm] = useState(false);
     const [newHospitalName, setNewHospitalName] = useState('');
-    const [newHospitalLocation, setNewHospitalLocation] = useState('');
+    const [newHospitalLocation, setNewHospitalLocation] = useState(''); // Corrected: Should be setNewHospitalLocation
 
     const [showAddDoctorForm, setShowAddDoctorForm] = useState(false);
     const [newDoctorName, setNewDoctorName] = useState('');
@@ -221,12 +221,12 @@ const ReviewsHubPage = () => {
     console.log("ReviewsHubPage: Component rendered.");
 
     // --- Hospital Management ---
-    // Modified to use onSnapshot for real-time updates
+    // Modified to use onSnapshot for real-time updates for public viewing
     useEffect(() => {
         let unsubscribe = () => {};
-        console.log("ReviewsHubPage: useEffect for hospital onSnapshot. AuthReady:", authReady);
+        console.log("ReviewsHubPage: useEffect for hospital onSnapshot. DB, AppId Ready:", !!db, !!appId);
 
-        if (authReady && db && appId) {
+        if (db && appId) { // Only check for db and appId readiness for public viewing
             setLoadingHospitals(true);
             setNoHospitalsFound(false);
             const hospitalsColRef = collection(db, `artifacts/${appId}/public/data/hospitals`);
@@ -252,9 +252,9 @@ const ReviewsHubPage = () => {
                 setLoadingHospitals(false);
                 setNoHospitalsFound(true);
             });
-        } else if (!authReady) {
-            // If auth is not ready, reset states and wait
-            setLoadingHospitals(true); // Keep loading true until authReady
+        } else {
+            // Reset states if db or appId are not ready
+            setLoadingHospitals(true);
             setHospitals([]);
             setDisplayedHospitals([]);
             setNoHospitalsFound(false);
@@ -265,14 +265,21 @@ const ReviewsHubPage = () => {
             console.log("ReviewsHubPage: Cleaning up hospital onSnapshot listener.");
             unsubscribe();
         };
-    }, [authReady, db, appId, showMessage]);
+    }, [db, appId, collection, onSnapshot, showMessage]);
 
 
-    // NEW FUNCTION: Handle Add Hospital (for general users)
+    // NEW FUNCTION: Handle Add Hospital (for general users) - Protected
     const handleAddHospitalByUser = useCallback(async (e) => {
         e.preventDefault();
-        if (!authReady || !currentUserId || !db || !appId) {
-            showMessage('You must be logged in to add a hospital.', 'error');
+        // Protection: User must be logged in and not anonymous
+        if (!currentUserId || currentUserIsAnonymous) { // Check if not logged in or is anonymous
+            showMessage('You must be logged in to add a hospital. Please sign up or log in.', 'error');
+            setShowAuthModal(true); // Open auth modal
+            return;
+        }
+
+        if (!db || !appId) {
+            showMessage('Firebase not ready to add a hospital.', 'error');
             return;
         }
         if (!newHospitalName.trim() || !newHospitalLocation.trim()) {
@@ -292,7 +299,9 @@ const ReviewsHubPage = () => {
             const newHospitalRef = doc(collection(db, `artifacts/${appId}/public/data/hospitals`));
             await setDoc(newHospitalRef, {
                 name: newHospital.name,
-                location: newHospital.location
+                location: newHospital.location,
+                createdAt: new Date().toISOString(),
+                createdBy: currentUserId, // Record who created it
             });
 
             showMessage('Hospital added successfully! You can now add doctors to it.', 'success');
@@ -316,7 +325,7 @@ const ReviewsHubPage = () => {
             // If optimistic update failed, revert the state (more complex for real-time listeners, but good practice)
             setHospitals(prevHospitals => prevHospitals.filter(h => h.id !== tempId));
         }
-    }, [authReady, currentUserId, db, appId, newHospitalName, newHospitalLocation, showMessage]);
+    }, [currentUserId, currentUserIsAnonymous, db, appId, newHospitalName, newHospitalLocation, showMessage, collection, doc, setDoc, setShowAuthModal]);
 
 
     // Effect to filter and update displayedHospitals whenever `hospitals` or `hospitalInput` changes
@@ -403,7 +412,7 @@ const ReviewsHubPage = () => {
         // Return unsubscribe function for cleanup when selectedHospital changes
         return unsubscribeDoctors;
 
-    }, [db, appId, showMessage, doctorInput]);
+    }, [db, appId, showMessage, doctorInput, collection, onSnapshot]);
 
 
     // EFFECT for scrolling to doctor selection section when a hospital is selected
@@ -420,26 +429,30 @@ const ReviewsHubPage = () => {
 
 
     // --- Doctor Management (Filtering) ---
-    const filterAndRenderDoctors = useCallback(() => {
-        console.log("ReviewsHubPage: filterAndRenderDoctors called. DoctorInput:", doctorInput);
+    // This useEffect handles filtering of doctors based on doctorInput
+    useEffect(() => {
+        console.log("ReviewsHubPage: useEffect for filtering doctors triggered. DoctorInput:", doctorInput);
         const searchTerm = doctorInput.trim().toLowerCase();
-        if (!selectedHospital) {
-            showMessage('Please select a hospital first.', 'error');
-            return;
-        }
-
         const filtered = doctors.filter(doctor =>
             doctor.name.toLowerCase().includes(searchTerm) ||
             (doctor.specialty && doctor.specialty.toLowerCase().includes(searchTerm))
         );
         setDisplayedDoctors(filtered);
-    }, [doctorInput, selectedHospital, doctors, showMessage]);
+    }, [doctors, doctorInput]);
 
-    // NEW FUNCTION: Handle Add Doctor (for general users)
+
+    // NEW FUNCTION: Handle Add Doctor (for general users) - Protected
     const handleAddDoctorByUser = useCallback(async (e) => {
         e.preventDefault();
-        if (!authReady || !currentUserId || !db || !appId) {
-            showMessage('You must be logged in to add a doctor.', 'error');
+        // Protection: User must be logged in and not anonymous
+        if (!currentUserId || currentUserIsAnonymous) {
+            showMessage('You must be logged in to add a doctor. Please sign up or log in.', 'error');
+            setShowAuthModal(true); // Open auth modal
+            return;
+        }
+
+        if (!db || !appId) {
+            showMessage('Firebase not ready.', 'error');
             return;
         }
         if (!selectedHospital || !selectedHospital.id) {
@@ -472,7 +485,9 @@ const ReviewsHubPage = () => {
             await setDoc(newDoctorRef, {
                 name: newDoctor.name,
                 specialty: newDoctor.specialty,
-                ratings: []
+                ratings: [],
+                createdAt: new Date().toISOString(),
+                createdBy: currentUserId, // Record who created it
             });
 
             showMessage(`Dr. ${newDoctor.name} added successfully to ${selectedHospital.name}!`, 'success');
@@ -494,7 +509,7 @@ const ReviewsHubPage = () => {
             // If optimistic update failed, revert the state
             setDoctors(prevDoctors => prevDoctors.filter(d => d.id !== tempId));
         }
-    }, [authReady, currentUserId, db, appId, selectedHospital, newDoctorName, newDoctorSpecialty, showMessage]);
+    }, [currentUserId, currentUserIsAnonymous, db, appId, selectedHospital, newDoctorName, newDoctorSpecialty, showMessage, collection, doc, setDoc, setShowAuthModal]);
 
 
     const handleDoctorSelect = useCallback(async (doctor) => {
@@ -507,7 +522,7 @@ const ReviewsHubPage = () => {
 
         // Handle mobile view toggle for review submission form
         if (window.innerWidth < 1024) {
-            setShowReviewSubmissionSection(false);
+            setShowReviewSubmissionSection(false); // Keep this false initially for mobile
         } else {
             setShowReviewSubmissionSection(true);
         }
@@ -519,7 +534,7 @@ const ReviewsHubPage = () => {
                 doctorReviewsDisplaySectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }, 100); // Small delay to allow DOM updates
         }
-    }, []); // Removed db, appId, showMessage from dependency array as setSelectedDoctor triggers useEffect
+    }, []);
 
     // New useEffect for managing the onSnapshot listener based on selectedDoctor
     useEffect(() => {
@@ -532,7 +547,7 @@ const ReviewsHubPage = () => {
             unsubscribe = onSnapshot(doctorDocRef, (docSnap) => {
                 console.log("ReviewsHubPage: onSnapshot triggered for doctorDocRef.");
                 setLoadingReviews(false);
-                if (!docSnap.exists() || !docSnap.data().ratings || docSnap.data().ratings.length === 0) {
+                if (!docSnap.exists() || !docSnap.data()?.ratings || docSnap.data().ratings.length === 0) {
                     console.log("ReviewsHubPage: No reviews or document data for this doctor found in snapshot.");
                     setNoReviewsForDoctor(true);
                     setReviews([]);
@@ -577,14 +592,21 @@ const ReviewsHubPage = () => {
             console.log("ReviewsHubPage: Cleaning up onSnapshot listener.");
             unsubscribe(); // Cleanup function
         }
-    }, [selectedDoctor, db, appId, showMessage, setReviews, setLoadingReviews, setNoReviewsForDoctor]); // Dependencies for useEffect
+    }, [selectedDoctor, db, appId, showMessage, doc, onSnapshot]);
 
 
     // --- Review Submission ---
-    const handleSubmitReview = useCallback(() => {
+    const handleSubmitReview = useCallback(async () => {
         console.log("ReviewsHubPage: handleSubmitReview called.");
-        if (!authReady || !currentUserId) {
-            showMessage('Please wait for authentication to complete or log in.', 'error');
+        // Protection: User must be logged in and not anonymous
+        if (!currentUserId || currentUserIsAnonymous) {
+            showMessage('You must be logged in to submit a review. Please sign up or log in.', 'error');
+            setShowAuthModal(true); // Open auth modal
+            return;
+        }
+
+        if (!db || !appId) {
+            showMessage('Firebase not ready.', 'error');
             return;
         }
         if (!selectedHospital || !selectedDoctor) {
@@ -614,7 +636,7 @@ const ReviewsHubPage = () => {
                 stars: reviewRating,
                 comment: reviewText,
                 reviewerId: `RN-${currentUserId.substring(0, 5)}`, // This will store the generic RN-ID
-                date: new Date(),
+                date: new Date(), // Store as a Firestore Timestamp or JS Date
                 hospitalName: selectedHospital.name,
                 doctorName: selectedDoctor.name,
                 nursingField: nursingField, // Include nursing field from state
@@ -622,7 +644,7 @@ const ReviewsHubPage = () => {
             };
             console.log("ReviewsHubPage: Submitting new review:", newReview);
 
-            updateDoc(doctorRef, {
+            await updateDoc(doctorRef, {
                 ratings: arrayUnion(newReview)
             });
 
@@ -637,16 +659,19 @@ const ReviewsHubPage = () => {
             console.error("ReviewsHubPage: Error adding review: ", e);
             showMessage(`Error submitting review: ${e.message}`, 'error');
         }
-    }, [authReady, currentUserId, selectedHospital, selectedDoctor, reviewText, reviewRating, nursingField, db, appId, showMessage]);
+    }, [currentUserId, currentUserIsAnonymous, selectedHospital, selectedDoctor, reviewText, reviewRating, nursingField, db, appId, showMessage, doc, updateDoc, arrayUnion, setShowAuthModal]);
 
     // --- Comment Submission ---
-    const handleAddCommentToReview = useCallback(async (reviewDateMillis, commentText) => {
+    const handleAddCommentToReview = useCallback(async (reviewDateMillis, commentTextValue) => { // Renamed commentText to commentTextValue to avoid conflict with state
         console.log("ReviewsHubPage: handleAddCommentToReview called.");
-        if (!authReady || !currentUserId) {
-            showMessage('Authentication Required. Please wait to post a comment.', 'error');
+        // Protection: User must be logged in and not anonymous
+        if (!currentUserId || currentUserIsAnonymous) {
+            showMessage('You must be logged in to add a comment. Please sign up or log in.', 'error');
+            setShowAuthModal(true); // Open auth modal
             return;
         }
-        if (commentText.trim() === '') {
+
+        if (commentTextValue.trim() === '') {
             showMessage('Comment cannot be empty.', 'error');
             return;
         }
@@ -654,7 +679,7 @@ const ReviewsHubPage = () => {
              showMessage('Hospital or doctor not selected.', 'error');
              return;
         }
-        const contentCheck = filterContent(commentText);
+        const contentCheck = filterContent(commentTextValue);
         if (!contentCheck.isValid) {
             showMessage(contentCheck.message, 'error');
             return;
@@ -681,7 +706,7 @@ const ReviewsHubPage = () => {
 
                 if (targetReviewIndex !== -1) {
                     const newComment = {
-                        text: commentText,
+                        text: commentTextValue,
                         userId: `RN-${currentUserId.substring(0, 5)}`,
                         date: new Date() // Store as a JS Date object
                     };
@@ -697,6 +722,7 @@ const ReviewsHubPage = () => {
                     showMessage('Comment added successfully!', 'success');
                     console.log('ReviewsHubPage: Comment added successfully to review index', targetReviewIndex, 'for doctor', selectedDoctor.id);
                     setShowCommentInput({}); // Close all comment inputs after success
+                    setCommentText({}); // Clear the specific comment text input state
                 } else {
                     showMessage('Error posting comment: Could not find review to update.', 'error');
                     console.error('ReviewsHubPage: Error: Review not found by timestamp for doctor', selectedDoctor.id);
@@ -709,16 +735,22 @@ const ReviewsHubPage = () => {
             console.error("ReviewsHubPage: Error adding comment to review: ", e);
             showMessage(`Error posting comment: ${e.message}`, 'error');
         }
-    }, [authReady, currentUserId, selectedHospital, selectedDoctor, db, appId, showMessage]);
+    }, [currentUserId, currentUserIsAnonymous, selectedHospital, selectedDoctor, db, appId, showMessage, doc, getDoc, updateDoc, setShowAuthModal]);
 
 
     // Mobile review form toggle buttons
     const handleAddReviewMobileClick = useCallback(() => {
+        // Check authentication before allowing to write a review
+        if (!currentUserId || currentUserIsAnonymous) {
+            showMessage('You must be logged in to write a review. Please sign up or log in.', 'error');
+            setShowAuthModal(true);
+            return;
+        }
         setShowReviewSubmissionSection(true);
         if (reviewSubmissionSectionRef.current) {
             reviewSubmissionSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
-    }, []);
+    }, [currentUserId, currentUserIsAnonymous, showMessage, setShowAuthModal]);
 
     const handleCancelReviewMobileClick = useCallback(() => {
         setShowReviewSubmissionSection(false);
@@ -757,17 +789,18 @@ const ReviewsHubPage = () => {
 
     return (
         <ErrorBoundary>
-            <div className="flex-grow container mx-auto px-4 py-8 md:px-6 lg:px-8 pt-20">
+            <div className="flex-grow container mx-auto px-4 py-8 md:px-6 lg:px-8 pt-20" style={{backgroundColor: 'rgba(255, 255, 255, 0.8)'}}> {/* Changed background to transparent white */}
                 {/* MessageBox is rendered globally via App.jsx, but local `showMessage` uses it */}
                 {/* Added defensive check for message object properties */}
-                <MessageBox message={message?.text || ''} type={message?.type || ''} />
+                {/* The message object is now managed by App.jsx and passed via context, so direct access is not needed here. */}
+                {/* <MessageBox message={message?.text || ''} type={message?.type || ''} /> */}
 
                 <h1 className="text-4xl md:text-5xl font-bold text-gray-800 text-center mb-8">Share Your RN<span className="text-[#CC5500]">Tea</span>!</h1>
 
                 {/* Hospital Selection Section */}
                 <section id="hospital-selection-section" className="bg-white p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted">
                     <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6 text-center">Which hospital are you interested in?</h2>
-                    <div className="flex flex-col md:flex-row items-center gap-4 mb-4"> {/* Added mb-4 for spacing */}
+                    <div className="flex flex-col md:flex-row items-center gap-4 mb-4">
                         <input
                             type="text"
                             id="hospital-input"
@@ -786,19 +819,26 @@ const ReviewsHubPage = () => {
                         </button>
                     </div>
 
-                    {/* NEW: Or Add Hospital Section */}
+                    {/* NEW: Or Add Hospital Section - Always visible, but triggers login if not authenticated */}
                     <div className="text-center mb-6">
                         <button
-                            onClick={() => setShowAddHospitalForm(prev => !prev)}
-                            className="text-gray-600 hover:text-custom-beige font-semibold py-2 px-4 rounded-md transition-colors transform hover:scale-105 transition-transform duration-300 ease-in-out" // Added scale animation
+                            onClick={() => {
+                                if (!currentUserId || currentUserIsAnonymous) {
+                                    showMessage('Login or Sign Up to add a hospital.', 'info');
+                                    setShowAuthModal(true);
+                                } else {
+                                    setShowAddHospitalForm(prev => !prev);
+                                }
+                            }}
+                            className="text-gray-600 hover:text-custom-beige font-semibold py-2 px-4 rounded-md transition-colors transform hover:scale-105 transition-transform duration-300 ease-in-out"
                         >
-                            {showAddHospitalForm ? (
+                            {showAddHospitalForm && currentUserId && !currentUserIsAnonymous ? ( // Only show "Hide" if form is open AND user is logged in
                                 'Hide Add Hospital Form'
                             ) : (
-                                <>or <span className="text-[#CC5500]">Add Hospital</span></> // Changed text color to burnt orange
+                                <>or <span className="text-[#CC5500]">Add Hospital</span></>
                             )}
                         </button>
-                        {showAddHospitalForm && (
+                        {showAddHospitalForm && currentUserId && !currentUserIsAnonymous && ( // Only show form if logged in and not anonymous
                             <form ref={addHospitalFormRef} onSubmit={handleAddHospitalByUser} className="space-y-4 mt-4 p-4 border border-gray-200 rounded-md bg-gray-50">
                                 <input
                                     type="text"
@@ -820,6 +860,9 @@ const ReviewsHubPage = () => {
                                 <button type="button" onClick={() => setShowAddHospitalForm(false)} className="w-full bg-gray-400 text-white py-2 px-4 rounded-md hover:bg-gray-500 transition-colors mt-2">Cancel</button>
                             </form>
                         )}
+                        {showAddHospitalForm && (!currentUserId || currentUserIsAnonymous) && ( // Message if form is open but user is not logged in
+                             <p className="text-red-600 mt-2 text-center">Please log in or sign up to add a hospital.</p>
+                        )}
                     </div>
 
                     <div className="mb-4 mt-8">
@@ -830,7 +873,6 @@ const ReviewsHubPage = () => {
                             {displayedHospitals.map((hospital) => (
                                 <button
                                     key={hospital.id}
-                                    // Added data attribute for scrolling to new hospital
                                     data-hospital-name={hospital.name}
                                     className="bg-gray-100 text-gray-800 px-4 py-2 rounded-full hover:bg-custom-beige hover:text-gray-800 transition duration-200 btn-hover-scale"
                                     onClick={() => handleHospitalSelect(hospital)}
@@ -873,19 +915,26 @@ const ReviewsHubPage = () => {
                         </button>
                     </div>
 
-                    {/* NEW: Or Add Doctor Section */}
+                    {/* NEW: Or Add Doctor Section - Always visible, but triggers login if not authenticated */}
                     <div className="text-center mb-6">
                         <button
-                            onClick={() => setShowAddDoctorForm(prev => !prev)}
-                            className="text-gray-600 hover:text-custom-beige font-semibold py-2 px-4 rounded-md transition-colors transform hover:scale-105 transition-transform duration-300 ease-in-out" // Added scale animation
+                            onClick={() => {
+                                if (!currentUserId || currentUserIsAnonymous) {
+                                    showMessage('Login or Sign Up to add a doctor.', 'info');
+                                    setShowAuthModal(true);
+                                } else {
+                                    setShowAddDoctorForm(prev => !prev);
+                                }
+                            }}
+                            className="text-gray-600 hover:text-custom-beige font-semibold py-2 px-4 rounded-md transition-colors transform hover:scale-105 transition-transform duration-300 ease-in-out"
                         >
-                            {showAddDoctorForm ? (
+                            {showAddDoctorForm && currentUserId && !currentUserIsAnonymous ? ( // Only show "Hide" if form is open AND user is logged in
                                 'Hide Add Doctor Form'
                             ) : (
-                                <>or <span className="text-[#CC5500]">Add Doctor</span></> // Changed text color to burnt orange
+                                <>or <span className="text-[#CC5500]">Add Doctor</span></>
                             )}
                         </button>
-                        {showAddDoctorForm && (
+                        {showAddDoctorForm && currentUserId && !currentUserIsAnonymous && ( // Only show form if logged in and not anonymous
                             <form ref={addDoctorFormRef} onSubmit={handleAddDoctorByUser} className="space-y-4 mt-4 p-4 border border-gray-200 rounded-md bg-gray-50">
                                 <input
                                     type="text"
@@ -907,6 +956,9 @@ const ReviewsHubPage = () => {
                                 <button type="button" onClick={() => setShowAddDoctorForm(false)} className="w-full bg-gray-400 text-white py-2 px-4 rounded-md hover:bg-gray-500 transition-colors mt-2">Cancel</button>
                             </form>
                         )}
+                        {showAddDoctorForm && (!currentUserId || currentUserIsAnonymous) && ( // Message if form is open but user is not logged in
+                            <p className="text-red-600 mt-2 text-center">Please log in or sign up to add a doctor.</p>
+                        )}
                     </div>
 
                     <div className="mb-4">
@@ -917,7 +969,6 @@ const ReviewsHubPage = () => {
                             {displayedDoctors.map((doctor) => (
                                 <button
                                     key={doctor.id}
-                                    // Added data attribute for scrolling to new doctor
                                     data-doctor-name={doctor.name}
                                     className="bg-gray-100 text-gray-800 px-4 py-2 rounded-full hover:bg-custom-beige hover:text-gray-800 transition duration-200 btn-hover-scale"
                                     onClick={() => handleDoctorSelect(doctor)}
@@ -981,6 +1032,7 @@ const ReviewsHubPage = () => {
                             onChange={(e) => setReviewText(e.target.value)}
                             maxLength={MAX_CHAR_LIMIT}
                         ></textarea>
+                        {/* Submit Review Button - Always visible, but triggers login if not authenticated */}
                         <button
                             id="submit-review-btn"
                             className="bg-custom-beige text-gray-800 font-bold py-3 px-6 rounded-full hover:opacity-90 transition duration-300 shadow-md w-full btn-hover-scale"
@@ -1019,9 +1071,9 @@ const ReviewsHubPage = () => {
                                 {reviews.map((review, index) => (
                                     <div key={review.date.getTime() + index} className="bg-white p-5 rounded-lg shadow-md border border-gray-200">
                                         <div className="flex justify-between items-start mb-3">
-                                            <div className="min-w-0"> {/* Added min-w-0 to allow text to wrap */}
+                                            <div className="min-w-0">
                                                 <StarRating rating={review.stars} onRatingChange={() => {}} readOnly={true} />
-                                                <p className="text-sm text-gray-500 mt-1 break-words"> {/* Added break-words */}
+                                                <p className="text-sm text-gray-500 mt-1 break-words">
                                                     {review.nursingField} on: {review.date instanceof Date ? review.date.toLocaleDateString() : 'N/A'}
                                                 </p>
                                             </div>
@@ -1045,15 +1097,22 @@ const ReviewsHubPage = () => {
                                             ) : (
                                                 <p className="text-sm text-gray-500 mb-3">No comments yet. Be the first!</p>
                                             )}
-
+                                            {/* Add Comment Button - Always visible, but triggers login if not authenticated */}
                                             <button
-                                                onClick={() => setShowCommentInput(prev => ({ ...prev, [review.date.getTime()]: !prev[review.date.getTime()] }))}
+                                                onClick={() => {
+                                                    if (!currentUserId || currentUserIsAnonymous) {
+                                                        showMessage('Login or Sign Up to add a comment.', 'info');
+                                                        setShowAuthModal(true);
+                                                    } else {
+                                                        setShowCommentInput(prev => ({ ...prev, [review.date.getTime()]: !prev[review.date.getTime()] }));
+                                                    }
+                                                }}
                                                 className="text-blue-500 hover:underline text-sm mb-3"
                                             >
-                                                {showCommentInput[review.date.getTime()] ? 'Cancel Comment' : 'Add a Comment'}
+                                                {showCommentInput[review.date.getTime()] && currentUserId && !currentUserIsAnonymous ? 'Cancel Comment' : 'Add a Comment'}
                                             </button>
 
-                                            {showCommentInput[review.date.getTime()] && (
+                                            {showCommentInput[review.date.getTime()] && currentUserId && !currentUserIsAnonymous && ( // Only show input if logged in and not anonymous
                                                 <div className="flex mt-2">
                                                     <input
                                                         type="text"
@@ -1062,16 +1121,17 @@ const ReviewsHubPage = () => {
                                                         onKeyDown={(e) => {
                                                             if (e.key === 'Enter' && e.target.value.trim()) {
                                                                 handleAddCommentToReview(review.date.getTime(), e.target.value);
-                                                                e.target.value = '';
+                                                                e.target.value = ''; // Clear input after posting
                                                             }
                                                         }}
+                                                        value={commentText[review.date.getTime()] || ''} // Controlled component for comment input
+                                                        onChange={(e) => setCommentText(prev => ({ ...prev, [review.date.getTime()]: e.target.value }))}
                                                     />
                                                     <button
                                                         className="submit-comment-btn bg-gray-600 text-white px-4 py-2 rounded-r-md hover:bg-gray-700 transition duration-200 btn-hover-scale"
-                                                        onClick={(e) => {
-                                                            const inputElement = e.target.previousElementSibling;
-                                                            handleAddCommentToReview(review.date.getTime(), inputElement.value);
-                                                            inputElement.value = '';
+                                                        onClick={() => {
+                                                            const valueToPost = commentText[review.date.getTime()];
+                                                            handleAddCommentToReview(review.date.getTime(), valueToPost);
                                                         }}
                                                     >
                                                         Post
