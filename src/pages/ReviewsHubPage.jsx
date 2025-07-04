@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext, useCallback } from 'react';
-import { FirebaseContext } from '../App.jsx'; // Added .jsx extension
-import StarRating from '../components/StarRating.jsx'; // Added .jsx extension
+import { FirebaseContext } from '../App.jsx';
+import StarRating from '../components/StarRating.jsx';
 
 // Firebase imports specific to this component
 import {
@@ -204,7 +204,7 @@ const ReviewsHubPage = () => {
     // NEW STATES for Add Hospital/Doctor forms
     const [showAddHospitalForm, setShowAddHospitalForm] = useState(false);
     const [newHospitalName, setNewHospitalName] = useState('');
-    const [newHospitalLocation, setNewHospitalLocation] = useState(''); // Corrected: Should be setNewHospitalLocation
+    const [newHospitalLocation, setNewHospitalLocation] = useState('');
 
     const [showAddDoctorForm, setShowAddDoctorForm] = useState(false);
     const [newDoctorName, setNewDoctorName] = useState('');
@@ -874,7 +874,7 @@ const ReviewsHubPage = () => {
                                 <button
                                     key={hospital.id}
                                     data-hospital-name={hospital.name}
-                                    className="bg-gray-100 text-gray-800 px-4 py-2 rounded-full hover:bg-custom-beige hover:text-gray-800 transition duration-200 btn-hover-scale"
+                                    className="bg-gray-100 text-gray-800 px-4 py-2 rounded-full hover:bg-[#CC5500] hover:text-white transition duration-200 btn-hover-scale"
                                     onClick={() => handleHospitalSelect(hospital)}
                                 >
                                     {hospital.name}
@@ -1052,7 +1052,7 @@ const ReviewsHubPage = () => {
 
                     {/* Right Column: Reviews Display Section */}
                     <section id="doctor-reviews-display" ref={doctorReviewsDisplaySectionRef} className="lg:col-span-2 bg-custom-beige p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted">
-                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Reviews for <span id="display-selected-doctor-reviews" className="text-[#CC5500] font-extrabold">{selectedDoctor?.name}</span></h2>
+                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Reviews for <span id="display-selected-doctor-reviews" className="text-[#CC5500] font-extrabold">{(selectedDoctor && selectedDoctor.name) ? selectedDoctor.name : ''}</span></h2>
                         {window.innerWidth < 1024 && !showReviewSubmissionSection && (
                             <button
                                 id="add-review-mobile-btn"

@@ -7,43 +7,43 @@ import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import { initializeApp } from 'firebase/app';
 import {
     getAuth,
-    //signInAnonymously,
-    //signInWithCustomToken,
+    // signInAnonymously, // Commented out to prevent automatic anonymous sign-in
+    signInWithCustomToken,
     onAuthStateChanged,
-    signOut, // Reintroduced
-    createUserWithEmailAndPassword, // Reintroduced
-    signInWithEmailAndPassword, // Reintroduced
-    GoogleAuthProvider, // Reintroduced
-    signInWithPopup, // Reintroduced
-    OAuthProvider, // Reintroduced
-    linkWithCredential, // Reintroduced
-    reauthenticateWithCredential, // Reintroduced
-    EmailAuthProvider, // Reintroduced
-    updateEmail, // Reintroduced
-    updatePassword, // Reintroduced
-    sendPasswordResetEmail // Reintroduced
+    signOut,
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    GoogleAuthProvider,
+    signInWithPopup,
+    OAuthProvider,
+    linkWithCredential,
+    reauthenticateWithCredential,
+    EmailAuthProvider,
+    updateEmail,
+    updatePassword,
+    sendPasswordResetEmail
 } from 'firebase/auth';
 import {
     getFirestore,
-    collection, // Reintroduced
-    doc, // Reintroduced
-    getDoc, // Reintroduced
-    getDocs, // Reintroduced
-    setDoc, // Reintroduced
-    updateDoc, // Reintroduced
-    deleteDoc, // Reintroduced
-    query, // Reintroduced
-    where, // Reintroduced
-    arrayUnion // Reintroduced
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    setDoc,
+    updateDoc,
+    deleteDoc,
+    query,
+    where,
+    arrayUnion
 } from 'firebase/firestore';
 
 // Reintroducing Page Components imports
-import HomePage from './pages/HomePage.jsx'; // Explicit .jsx extension
-import ReviewsHubPage from './pages/ReviewsHubPage.jsx'; // Explicit .jsx extension
+import HomePage from './pages/HomePage.jsx';
+import ReviewsHubPage from './pages/ReviewsHubPage.jsx';
 
 // Reintroducing Reusable Components imports
-import MessageBox from './components/MessageBox.jsx'; // Explicit .jsx extension
-import AuthModal from './components/AuthModal.jsx'; // Explicit .jsx extension
+import MessageBox from './components/MessageBox.jsx';
+import AuthModal from './components/AuthModal.jsx';
 
 // Create a Firebase Context to pass instances and auth functions down the component tree
 export const FirebaseContext = createContext(null);
@@ -153,34 +153,28 @@ export default function App() {
                     if (user) {
                         setCurrentUserId(user.uid);
                     } else {
-                        console.log("App.jsx: No user found. Attempting anonymous sign-in or custom token sign-in.");
+                        console.log("App.jsx: No user found. Checking for custom token.");
                         let initialAuthToken = null;
                         try {
-                            // Safely attempt to access __initial_auth_token here
                             initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
                         } catch (e) {
                             console.warn("App.jsx: __initial_auth_token is not declared or accessible:", e);
-                            // initialAuthToken remains null
                         }
 
-                        try {
-                            if (initialAuthToken) {
-                                console.log("App.jsx: Signing in with custom token...");
+                        if (initialAuthToken) {
+                            console.log("App.jsx: Signing in with custom token...");
+                            try {
                                 await signInWithCustomToken(authInstance, initialAuthToken);
-                            } else {
-                                // Only sign in anonymously if no other user is logged in
-                                if (!authInstance.currentUser) {
-                                    await signInAnonymously(authInstance);
-                                }
+                                setCurrentUserId(authInstance.currentUser?.uid);
+                                console.log("App.jsx: Custom token sign-in successful. Current user ID:", authInstance.currentUser?.uid);
+                            } catch (error) {
+                                console.error("App.jsx: Error during custom token authentication:", error);
+                                showMessage(`Authentication failed: ${error.message}`, 'error');
+                                setCurrentUserId(null); // Ensure no user ID if sign-in fails
                             }
-                            // Fallback to a random string using Math.random() if auth fails or is anonymous
-                            setCurrentUserId(authInstance.currentUser?.uid || `anon-${Math.random().toString(36).substring(2, 15)}`);
-                            console.log("App.jsx: Sign-in successful. Current user ID:", authInstance.currentUser?.uid);
-                        } catch (error) {
-                            console.error("App.jsx: Error during authentication (anonymous/custom token):", error);
-                            // Fallback to a random string using Math.random() if auth fails
-                            setCurrentUserId(`anon-${Math.random().toString(36).substring(2, 15)}`);
-                            showMessage(`Authentication failed: ${error.message}`, 'error');
+                        } else {
+                            console.log("App.jsx: No custom token found. User remains signed out by default.");
+                            setCurrentUserId(null); // Ensure no user is signed in automatically
                         }
                     }
                     setAuthReady(true);
@@ -271,9 +265,7 @@ export default function App() {
             await signOut(auth);
             setCurrentUserId(null);
             showMessage('Signed out successfully!', 'success');
-            // Optionally, sign back in anonymously after sign out
-            await signInAnonymously(auth);
-            setCurrentUserId(auth.currentUser?.uid || `anon-${Math.random().toString(36).substring(2, 15)}`);
+            // Do NOT automatically sign in anonymously after sign out
         } catch (error) {
             console.error("Error signing out:", error);
             showMessage(`Sign Out Failed: ${error.message}`, 'error');
@@ -396,17 +388,17 @@ export default function App() {
                             </Link>
                         </li>
                         <li>
-                            {currentUserId && currentUserId !== 'anonymous' ? (
+                            {currentUserId ? ( // Check if currentUserId exists (user is signed in)
                                 <button
                                     onClick={signOutUser}
-                                    className="bg-red-500 text-white font-bold py-2 px-4 rounded-full hover:bg-red-600 transition duration-300 shadow-md btn-hover-scale"
+                                    className="bg-[#CC5500] text-white font-bold py-2 px-4 rounded-full hover:bg-[#A84500] transition duration-300 shadow-md btn-hover-scale"
                                 >
                                     Sign Out
                                 </button>
                             ) : (
                                 <button
                                     onClick={() => setShowAuthModal(true)}
-                                    className="bg-blue-500 text-white font-bold py-2 px-4 rounded-full hover:bg-blue-600 transition duration-300 shadow-md btn-hover-scale"
+                                    className="bg-[#CC5500] text-white font-bold py-2 px-4 rounded-full hover:bg-[#A84500] transition duration-300 shadow-md btn-hover-scale"
                                 >
                                     Sign In
                                 </button>
@@ -462,17 +454,17 @@ export default function App() {
                 >
                     Contact
                 </Link>
-                {currentUserId && currentUserId !== 'anonymous' ? (
+                {currentUserId ? ( // Check if currentUserId exists (user is signed in)
                     <button
                         onClick={() => { signOutUser(); handleMobileNavLinkClick(); }}
-                        className="bg-red-500 text-white font-bold py-2 px-4 rounded-full hover:bg-red-600 transition duration-300 shadow-md btn-hover-scale mt-4"
+                        className="bg-[#CC5500] text-white font-bold py-2 px-4 rounded-full hover:bg-[#A84500] transition duration-300 shadow-md btn-hover-scale mt-4"
                     >
                         Sign Out
                     </button>
                 ) : (
                     <button
                         onClick={() => { setShowAuthModal(true); handleMobileNavLinkClick(); }}
-                        className="bg-blue-500 text-white font-bold py-2 px-4 rounded-full hover:bg-blue-600 transition duration-300 shadow-md btn-hover-scale mt-4"
+                        className="bg-[#CC5500] text-white font-bold py-2 px-4 rounded-full hover:bg-[#A84500] transition duration-300 shadow-md btn-hover-scale mt-4"
                     >
                         Sign In
                     </button>
@@ -499,10 +491,6 @@ export default function App() {
                             </Routes>
                             {/* Reintroduced AuthModal conditionally */}
                             {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
-
-                            <p className="text-center text-lg mt-4">Current User ID: {currentUserId}</p>
-                            <p className="text-center text-md mt-2">Auth Ready: {authReady ? 'Yes' : 'No'}</p>
-                            <p className="text-center text-md mt-2">App ID: {canvasAppId}</p>
                         </FirebaseContext.Provider>
                     )}
                 </ErrorBoundary>

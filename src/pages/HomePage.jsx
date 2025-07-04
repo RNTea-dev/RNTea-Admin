@@ -1,10 +1,20 @@
 // src/pages/HomePage.jsx
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useCallback, useContext } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import ReviewsHubPage from './ReviewsHubPage.jsx'; // Corrected import path with .jsx extension
+import ReviewsHubPage from './ReviewsHubPage.jsx'; // Standard import path for JSX files.
+import { FirebaseContext } from '../App.jsx'; // Import FirebaseContext
 
 const HomePage = () => {
     const location = useLocation(); // Get current location object including hash
+    const { auth, showMessage, appId } = useContext(FirebaseContext); // Access auth and showMessage from context
+
+    // State for contact form fields
+    const [contactName, setContactName] = useState('');
+    const [contactEmail, setContactEmail] = useState('');
+    const [contactSubject, setContactSubject] = useState('');
+    const [contactMessage, setContactMessage] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
 
     useEffect(() => {
         // Scroll to specific section if hash exists in URL
@@ -52,6 +62,75 @@ const HomePage = () => {
         };
     }, []);
 
+    // Handle contact form submission
+    const handleContactSubmit = useCallback(async (e) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+
+        if (!contactName.trim() || !contactEmail.trim() || !contactSubject.trim() || !contactMessage.trim()) {
+            showMessage('Please fill in all required fields.', 'error');
+            setIsSubmitting(false);
+            return;
+        }
+
+        try {
+            // Firebase Cloud Function endpoint URL
+            // Replace 'YOUR_REGION' with your Firebase function's region (e.g., 'us-central1')
+            // And 'YOUR_PROJECT_ID' with your Firebase project ID
+            // You can find the callable function URL in your Firebase console under Functions -> sendContactEmail
+            // For local testing, it might be http://localhost:5001/YOUR_PROJECT_ID/YOUR_REGION/sendContactEmail
+            // For deployed functions, it will be https://YOUR_REGION-YOUR_PROJECT_ID.cloudfunctions.net/sendContactEmail
+            // Using the callable function format for simplicity with Firebase SDK, but direct fetch is also possible.
+
+            // Construct the URL for the callable function
+            // Note: For deployed functions, Firebase SDK handles the URL.
+            // For direct fetch, you'd need the full URL.
+            // Since we're in a React app, we can use the callable function approach if Firebase SDK is available for functions.
+            // However, for simplicity and direct fetch, let's assume a generic callable endpoint.
+            // A more robust solution would involve Firebase's `firebase/functions` module.
+
+            // For now, let's assume a direct fetch to a URL you'd get after deployment.
+            // A placeholder URL is used. You MUST replace this with your actual deployed function URL.
+            const functionsBaseUrl = `https://${appId}.cloudfunctions.net`; // Example base URL, adjust as needed
+            const functionUrl = `${functionsBaseUrl}/sendContactEmail`; // Assuming function name is sendContactEmail
+
+            // Using fetch to call the Cloud Function
+            const response = await fetch(functionUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    data: { // Callable functions wrap data in a 'data' field
+                        name: contactName,
+                        email: contactEmail,
+                        subject: contactSubject,
+                        message: contactMessage,
+                    }
+                }),
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.data.success) {
+                showMessage('Your message has been sent successfully!', 'success');
+                setContactName('');
+                setContactEmail('');
+                setContactSubject('');
+                setContactMessage('');
+            } else {
+                const errorMessage = result.data?.message || 'Failed to send message. Please try again.';
+                showMessage(`Error: ${errorMessage}`, 'error');
+            }
+        } catch (error) {
+            console.error("Error submitting contact form:", error);
+            showMessage(`An unexpected error occurred: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    }, [contactName, contactEmail, contactSubject, contactMessage, showMessage, appId]);
+
+
     return (
         <>
             {/* Hero Section: Main Call to Action */}
@@ -72,7 +151,7 @@ const HomePage = () => {
                     <h1 className="text-5xl md:text-6xl lg:text-7xl font-extrabold mb-6 leading-tight animate-fade-in-down drop-shadow-md">RNTea: Rate, Navigate, Trust.</h1>
                     <p className="text-xl md:text-2xl mb-10 text-gray-700 animate-fade-in-up"> Do you really trust your Doctors? Let's hear from experienced RNs for a change. </p>
                     {/* Updated Link to scroll to the ReviewsHubPage section */}
-                    <Link to="#full-reviews-hub" className="bg-white text-gray-800 hover:bg-gray-100 font-bold py-3 px-10 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-105 hover:shadow-xl border border-gray-200 animate-fade-in-up antialiased"> View All Reviews </Link>
+                    <Link to="#full-reviews-hub" className="bg-white text-gray-800 hover:bg-gray-100 font-bold py-3 px-10 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-110 hover:shadow-2xl border border-gray-200 animate-fade-in-up antialiased"> View All Reviews </Link>
                 </div>
             </section>
 
@@ -81,7 +160,7 @@ const HomePage = () => {
                 <div className="container mx-auto flex flex-col md:flex-row items-center gap-12">
                     <div className="md:w-1/2 flex justify-center order-2 md:order-1 animate-slide-in-left">
                         {/* Image of a collage of nurses */}
-                       <img src="/Express-collage.jpg" alt="Collage of diverse medical professionals" className="rounded-lg shadow-xl border-4 border-custom-beige w-full max-w-md object-cover" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x300/F0F0F0/888888?text=Image+Not+Loaded'; }} />
+                       <img src="/Express-collage.jpg" alt="Collage of diverse medical professionals" className="rounded-lg shadow-xl border-4 w-full max-w-md object-cover" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x300/F0F0F0/888888?text=Image+Not+Loaded'; }} />
                     </div>
                     <div className="md:w-1/2 text-center md:text-left order-1 md:order-2 animate-slide-in-right">
                         <h2 className="text-4xl md:text-5xl font-bold text-gray-800 mb-6">Our Philosophy</h2>
@@ -112,22 +191,22 @@ const HomePage = () => {
                         {/* Left Column: Send us a Message Form */}
                         <div className="bg-gray-50 p-8 rounded-lg shadow-md animate-slide-in-left">
                             <h2 className="text-3xl font-bold text-gray-800 mb-6">Send us a Message</h2>
-                            <form>
+                            <form onSubmit={handleContactSubmit}>
                                 <div className="mb-4">
                                     <label htmlFor="your-name" className="block text-gray-700 text-sm font-medium mb-2">Your Name</label>
-                                    <input type="text" id="your-name" className="shadow-sm appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent" placeholder="John Doe" />
+                                    <input type="text" id="your-name" className="shadow-sm appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent" placeholder="John Doe" value={contactName} onChange={(e) => setContactName(e.target.value)} required />
                                 </div>
                                 <div className="mb-4">
                                     <label htmlFor="your-email" className="block text-gray-700 text-sm font-medium mb-2">Your Email</label>
-                                    <input type="email" id="your-email" className="shadow-sm appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent" placeholder="you@example.com" />
+                                    <input type="email" id="your-email" className="shadow-sm appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent" placeholder="you@example.com" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} required />
                                 </div>
                                 <div className="mb-4">
                                     <label htmlFor="subject" className="block text-gray-700 text-sm font-medium mb-2">Subject</label>
-                                    <input type="text" id="subject" className="shadow-sm appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent" placeholder="Regarding a review..." />
+                                    <input type="text" id="subject" className="shadow-sm appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent" placeholder="Regarding a review..." value={contactSubject} onChange={(e) => setContactSubject(e.target.value)} required />
                                 </div>
                                 <div className="mb-6">
                                     <label htmlFor="your-message" className="block text-gray-700 text-sm font-medium mb-2">Your Message <span className="text-gray-500">(optional)</span></label>
-                                    <textarea id="your-message" rows="5" className="shadow-sm appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent" placeholder="Share your experience... (optional)"></textarea>
+                                    <textarea id="your-message" rows="5" className="shadow-sm appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent" placeholder="Share your experience... (optional)" value={contactMessage} onChange={(e) => setContactMessage(e.target.value)} required></textarea>
                                 </div>
                                 {/* ReCAPTCHA placeholder (for demonstration) */}
                                 <div className="mb-6 bg-gray-200 p-4 rounded text-center text-gray-600 text-sm">
@@ -135,7 +214,9 @@ const HomePage = () => {
                                     <p className="text-xs mt-2">ERROR for site owner: Invalid domain for site key</p>
                                     <p className="text-xs">reCAPTCHA Privacy - Terms</p>
                                 </div>
-                                <button type="submit" className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-md w-full transition duration-300 ease-in-out">Send Message</button>
+                                <button type="submit" className="bg-[#FFDEB5] hover:bg-custom-beige text-gray-800 font-bold py-3 px-6 rounded-md w-full transition duration-300 ease-in-out" disabled={isSubmitting}>
+                                    {isSubmitting ? 'Sending...' : 'Send Message'}
+                                </button>
                             </form>
                         </div>
 
@@ -168,24 +249,26 @@ const HomePage = () => {
                             <div>
                                 <h3 className="text-xl font-semibold text-gray-800 mb-4">Connect with Us</h3>
                                 <div className="flex space-x-6 justify-start">
-                                    <a href="https://facebook.com/rntea" target="_blank" className="social-icon-hover text-blue-600 hover:text-blue-700 transition duration-300 transform hover:scale-110">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="currentColor" viewBox="0 0 24 24">
+                                    <a href="https://facebook.com/rntea" target="_blank" className="social-icon-hover text-blue-600 hover:text-blue-700 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="w-full h-full" fill="currentColor" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet">
                                             <path d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808c-3.271 0-4.192 1.552-4.192 4.615v3.385z"/>
                                         </svg>
                                     </a>
-                                    <a href="https://twitter.com/rntea_official" target="_blank" className="social-icon-hover text-blue-400 hover:text-blue-500 transition duration-300 transform hover:scale-110">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="currentColor" viewBox="0 0 24 24">
-                                            <path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.791-1.574 2.162-2.722-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.218 0-5.817 2.6-5.817 5.817 0 .455.05.897.138 1.316-4.836-.244-9.135-2.56-12.008-6.075-.5.855-.78 1.849-.78 2.923 0 2.01.996 3.78 2.502 4.829-.922-.028-1.79-.28-2.54-.66v.073c0 2.81 1.997 5.148 4.637 5.682-.485.131-.996.202-1.52.202-.371 0-.73-.035-1.076-.103.736 2.302 2.863 3.972 5.385 4.019-1.987 1.558-4.494 2.484-7.228 2.484-.473 0-.94-.027-1.4-.083 2.57 1.64 5.622 2.593 8.89 2.593 10.665 0 16.48-8.825 16.48-16.493 0-.252-.007-.5-.018-.75z"/>
+                                    <a href="https://twitter.com/rntea_official" target="_blank" className="social-icon-hover text-gray-800 hover:text-black transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
+                                        {/* X (formerly Twitter) icon */}
+                                        <svg className="w-full h-full" fill="currentColor" viewBox="0 0 1200 1227" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+                                            <path d="M714.163 519.284L1160.89 0H1055.03L667.137 450.887L357.328 0H0L468.492 671.544L0 1226.37H105.866L515.414 750.206L852.076 1226.37H1200L714.163 519.284ZM569.165 687.828L521.617 619.927L144.036 79.6262H302.46L603.935 515.043L651.483 582.944L1055.03 1147.37H896.59L569.165 687.828Z"/>
                                         </svg>
                                     </a>
-                                    <a href="https://linkedin.com/company/rntea" target="_blank" className="social-icon-hover text-blue-700 hover:text-blue-800 transition duration-300 transform hover:scale-110">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="currentColor" viewBox="0 0 24 24">
+                                    <a href="https://linkedin.com/company/rntea" target="_blank" className="social-icon-hover text-blue-700 hover:text-blue-800 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="w-full h-full" fill="currentColor" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet">
                                             <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
                                         </svg>
                                     </a>
-                                    <a href="https://instagram.com/rntea_official" target="_blank" className="social-icon-hover text-pink-500 hover:text-pink-600 transition duration-300 transform hover:scale-110">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="currentColor" viewBox="0 0 24 24">
-                                            <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.07 1.645.07 4.85s-.012 3.584-.07 4.85c-.148 3.252-1.691 4.771-4.919 4.919-.058 1.265-.07 1.645-.07 4.85s.012 3.584.07 4.85c.148 3.252 1.691 4.771 4.919 4.919 1.265.058 1.645.07 4.85.07s3.584-.012 4.85-.07c3.252-.148 4.771-1.691 4.919-4.919.058-1.265.07-1.645.07-4.85s-.012-3.584-.07-4.85c-.119-2.618-1.26-3.83-3.949-3.949-1.265-.058-1.645-.07-4.85-.07zm0 2.163c-3.204 0-3.584.012-4.85.07-2.618.119-3.83 1.26-3.949 3.949-.058 1.265-.07 1.645-.07 4.85s.012 3.584.07 4.85c.119 2.618 1.26 3.83 3.949 3.949 1.265.058 1.645.07 4.85.07s3.584-.012 4.85-.07c2.618-.119 3.83-1.26 3.949-3.949.058-1.265.07-1.645.07-4.85s-.012-3.584-.07-4.85c-.119-2.618-1.26-3.83-3.949-3.949-1.265-.058-1.645-.07-4.85-.07zm0 3.65c-2.481 0-4.5 2.019-4.5 4.5s2.019 4.5 4.5 4.5 4.5-2.019 4.5-4.5-2.019-4.5-4.5-4.5zm0 2.163c1.336 0 2.337 1.001 2.337 2.337s-1.001 2.337-2.337 2.337-2.337-1.001-2.337-2.337 1.001-2.337 2.337-2.337zm6.406-7.078c-.732 0-1.328.596-1.328 1.328s.596 1.328 1.328 1.328 1.328-.596 1.328-1.328-.596-1.328-1.328-1.328z"/>
+                                    <a href="https://instagram.com/rntea_official" target="_blank" className="social-icon-hover text-pink-500 hover:text-pink-600 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
+                                        {/* Modern Instagram icon - removed explicit width/height from SVG, relying on parent a tag and flex centering */}
+                                        <svg className="w-full h-full" fill="currentColor" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet">
+                                            <path d="M7.8 2h8.4C19.4 2 22 4.6 22 7.8v8.4c0 3.2-2.6 5.8-5.8 5.8H7.8C4.6 22 2 19.4 2 16.2V7.8C2 4.6 4.6 2 7.8 2zm-.2 2A2.2 2.2 0 0 0 5.4 6.2v8.4c0 1.2.9 2.2 2.2 2.2h8.4a2.2 2.2 0 0 0 2.2-2.2V6.2A2.2 2.2 0 0 0 16.2 4H7.6zM12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm6.5-3A1.5 1.5 0 1 0 18.5 7 1.5 1.5 0 0 0 18.5 4z"/>
                                         </svg>
                                     </a>
                                 </div>
