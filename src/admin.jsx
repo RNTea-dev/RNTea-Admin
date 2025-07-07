@@ -24,25 +24,15 @@ import './index.css';
 
 export const FirebaseContext = createContext(null);
 
-// Production-ready Firebase configuration.
-// In a real production environment, for `defaultFirebaseConfig` you'd replace placeholder values
-// with your actual production Firebase project config from environment variables or a secure build process.
-// The `__firebase_config`, `__initial_auth_token`, `__app_id` are likely from a specific Canvas/Firebase setup.
-// If you are deploying to a standard Firebase Hosting, these global variables will not exist.
-// You would uncomment and use your defaultFirebaseConfig directly as the primary source.
+// MANDATORY: Firebase configuration and initial app ID provided by the Canvas environment.
+// Access these safely.
 const canvasFirebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-const canvasAppId = typeof __app_id !== 'undefined' ? JSON.parse(__app_id) : null; // Ensure this is not JSON.parse if it's just a string
+const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : null; // __app_id is typically a string, not JSON.parse
 
-const defaultFirebaseConfig = {
-    apiKey: "AIzaSyBEwSVX9UY7-MNxeYwdbY0ZmDuXzYyt56g", // REPLACE WITH YOUR ACTUAL PRODUCTION API KEY
-    authDomain: "rntea-cca78.firebaseapp.com",
-    projectId: "rntea-cca78", // Your project ID
-    storageBucket: "rntea-cca78.firebasestorage.app",
-    messagingSenderId: "806310857835",
-    appId: "1:806310857835:web:b03b05847c818ee4fe352e",
-    measurementId: "G-ZKZBPS9FGE"
-};
+// --- IMPORTANT: Removed hardcoded defaultFirebaseConfig for security. ---
+// --- Configuration is now loaded from environment variables (Vite's import.meta.env) ---
+// --- or from the Canvas environment's __firebase_config and __app_id. ---
 
 function AdminAppRoot() {
     const [firebaseAppInstance, setFirebaseAppInstance] = useState(null);
@@ -61,8 +51,26 @@ function AdminAppRoot() {
     useEffect(() => {
         const initializeFirebase = async () => {
             try {
-                // Use canvas config if available, otherwise fallback to default config
-                const configToUse = canvasFirebaseConfig || defaultFirebaseConfig;
+                // Determine Firebase config to use: Canvas environment or Vite environment variables
+                let configToUse = canvasFirebaseConfig;
+                if (!configToUse) {
+                    // If not running in Canvas, load from Vite environment variables
+                    configToUse = {
+                        apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+                        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+                        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+                        storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+                        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+                        appId: import.meta.env.VITE_FIREBASE_APP_ID,
+                        measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+                    };
+                }
+
+                // Validate that essential config values are present
+                if (!configToUse.apiKey || !configToUse.projectId || !configToUse.appId) {
+                    throw new Error("Firebase configuration is incomplete. Check environment variables or Canvas setup.");
+                }
+
                 const appInstance = initializeApp(configToUse);
                 const authInstance = getAuth(appInstance);
                 const dbInstance = getFirestore(appInstance);
@@ -72,18 +80,14 @@ function AdminAppRoot() {
                 setDb(dbInstance);
 
                 const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
-                    // Removed diagnostic console.log
                     if (user) {
                         setCurrentUserId(user.uid);
                     } else {
                         setCurrentUserId(null); // No user authenticated
-                        // This message will appear if no user is logged in after init.
-                        // AdminPanel's login form will then be displayed.
                         showRootMessage('Please log in to access the Admin Panel.', 'info');
                     }
                     setAuthReady(true);
                     setLoadingFirebase(false);
-                    // Removed diagnostic console.log
                 });
 
                 // Removed hardcoded login block and __initial_auth_token usage for production
@@ -103,7 +107,7 @@ function AdminAppRoot() {
             }
         };
         initializeFirebase();
-    }, []); // Removed canvasFirebaseConfig, initialAuthToken from deps
+    }, []);
 
     const firebaseContextValue = useMemo(() => ({
         app: firebaseAppInstance,
@@ -111,8 +115,8 @@ function AdminAppRoot() {
         auth,
         userId: currentUserId,
         authReady,
-        // Use canvasAppId if available, otherwise fallback to projectId from default config
-        appId: (typeof __app_id !== 'undefined' ? JSON.parse(__app_id) : null) || defaultFirebaseConfig.projectId,
+        // Use canvasAppId if available, fallback to projectId from Vite environment variables
+        appId: canvasAppId || import.meta.env.VITE_FIREBASE_PROJECT_ID,
         loadingFirebase,
         message: rootMessage,
         showAdminMessage: showRootMessage,
@@ -120,7 +124,7 @@ function AdminAppRoot() {
         collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, arrayUnion
     }), [
         firebaseAppInstance, db, auth, currentUserId, authReady,
-        loadingFirebase, rootMessage, showRootMessage // Dependencies
+        loadingFirebase, rootMessage, showRootMessage, canvasAppId // Added canvasAppId to dependencies
     ]);
 
     return (

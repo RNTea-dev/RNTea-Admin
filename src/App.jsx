@@ -48,21 +48,14 @@ import AuthModal from './components/AuthModal.jsx';
 // Create a Firebase Context to pass instances and auth functions down the component tree
 export const FirebaseContext = createContext(null);
 
-// MANDATORY: Firebase configuration and initial app ID provided by the Canvas environment.
+// MANDATORY: Firebase configuration and initial app ID potentially provided by the Canvas environment.
 // Access these safely.
 const canvasFirebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
 const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : null;
 
-// Firebase configuration from the provided index.html snippet (for default fallback)
-const defaultFirebaseConfig = {
-    apiKey: "AIzaSyBEwSVX9UY7-MNxeYwdbY0ZmDuXzYyt56g",
-    authDomain: "rntea-cca78.firebaseapp.com",
-    projectId: "rntea-cca78",
-    storageBucket: "rntea-cca78.firebasestorage.app",
-    messagingSenderId: "806310857835",
-    appId: "1:806310857835:web:b03b05847c818ee4fe352e",
-    measurementId: "G-ZKZBPS9FGE"
-};
+// --- IMPORTANT: Configuration will now primarily come from Vite environment variables (import.meta.env). ---
+// --- The Canvas environment variables (__firebase_config) will be used as a fallback. ---
+
 
 // --- Error Boundary Component (for debugging purposes) ---
 class ErrorBoundary extends React.Component {
@@ -137,8 +130,62 @@ export default function App() {
         const initializeFirebase = async () => {
             try {
                 console.log("App.jsx: Loading Firebase...");
-                const configToUse = canvasFirebaseConfig || defaultFirebaseConfig;
-                console.log("App.jsx: Firebase config being used:", configToUse);
+
+                let configToUse = null;
+                let configSource = 'Unknown';
+
+                // Attempt to load from Vite environment variables first
+                const viteConfig = {
+                    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+                    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+                    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+                    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+                    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+                    appId: import.meta.env.VITE_FIREBASE_APP_ID,
+                    measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+                };
+
+                // --- DEBUGGING LOGS FOR ENVIRONMENT VARIABLES ---
+                console.log("App.jsx DEBUG: Checking import.meta.env values:");
+                console.log("  VITE_FIREBASE_API_KEY:", import.meta.env.VITE_FIREBASE_API_KEY);
+                console.log("  VITE_FIREBASE_AUTH_DOMAIN:", import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
+                console.log("  VITE_FIREBASE_PROJECT_ID:", import.meta.env.VITE_FIREBASE_PROJECT_ID);
+                console.log("  VITE_FIREBASE_APP_ID:", import.meta.env.VITE_FIREBASE_APP_ID);
+                console.log("App.jsx DEBUG: Constructed viteConfig object:", viteConfig);
+                // --- END DEBUGGING LOGS ---
+
+
+                // Check if Vite config is complete
+                if (viteConfig.apiKey && viteConfig.projectId && viteConfig.appId) {
+                    configToUse = viteConfig;
+                    configSource = 'Vite Environment Variables (import.meta.env)';
+                } else if (canvasFirebaseConfig && canvasFirebaseConfig.apiKey && canvasFirebaseConfig.projectId && canvasFirebaseConfig.appId) {
+                    // Fallback to Canvas environment config if Vite config is incomplete
+                    console.warn("App.jsx: Vite environment variables are incomplete. Falling back to Canvas environment config.");
+                    configToUse = canvasFirebaseConfig;
+                    configSource = 'Canvas Environment (__firebase_config)';
+                } else {
+                    // If neither is complete, throw an error
+                    throw new Error("Firebase configuration is incomplete or missing from both Vite environment variables and Canvas setup. Please ensure either .env file is correct or Canvas variables are provided.");
+                }
+
+                // Log the source and masked config for debugging
+                console.log(`App.jsx: Firebase config source: ${configSource}`);
+                console.log("App.jsx: Firebase config being used (sensitive parts masked):", {
+                    apiKey: configToUse?.apiKey ? '********' : 'N/A',
+                    authDomain: configToUse?.authDomain,
+                    projectId: configToUse?.projectId,
+                    storageBucket: configToUse?.storageBucket,
+                    messagingSenderId: configToUse?.messagingSenderId,
+                    appId: configToUse?.appId ? '********' : 'N/A',
+                    measurementId: configToUse?.measurementId
+                });
+
+                // Validate that essential config values are present (redundant, but good final check)
+                if (!configToUse || !configToUse.apiKey || !configToUse.projectId || !configToUse.appId) {
+                    throw new Error(`Firebase configuration is incomplete from ${configSource}. Missing apiKey, projectId, or appId. This should not happen if previous checks passed.`);
+                }
+
                 const appInstance = initializeApp(configToUse);
                 const authInstance = getAuth(appInstance);
                 const dbInstance = getFirestore(appInstance);
@@ -180,7 +227,6 @@ export default function App() {
                     setAuthReady(true);
                     setLoadingFirebase(false);
                     console.log("App.jsx: Firebase initialization complete. AuthReady:", true, "LoadingFirebase:", false);
-                    console.log("App.jsx: Firebase & Auth Ready!");
                 });
 
                 return () => {
@@ -317,7 +363,8 @@ export default function App() {
         auth,
         currentUserId,
         authReady,
-        appId: canvasAppId || 'rntea-cca78', // Use canvasAppId if available, fallback to default
+        // Use canvasAppId if available, fallback to projectId from Vite environment variables
+        appId: canvasAppId || import.meta.env.VITE_FIREBASE_PROJECT_ID,
         showMessage, // Pass showMessage function
         // Reintroduced auth functions
         signUpWithEmailPassword,
@@ -457,14 +504,14 @@ export default function App() {
                 {currentUserId ? ( // Check if currentUserId exists (user is signed in)
                     <button
                         onClick={() => { signOutUser(); handleMobileNavLinkClick(); }}
-                        className="bg-[#CC5500] text-white font-bold py-2 px-4 rounded-full hover:bg-[#A84500] transition duration-300 shadow-md btn-hover-scale mt-4"
+                        className="bg-[#CC5500] text-white font-bold py-2 px-4 rounded-full hover:bg-[#A84500] transition duration-300 shadow-md btn-hover-scale"
                     >
                         Sign Out
                     </button>
                 ) : (
                     <button
                         onClick={() => { setShowAuthModal(true); handleMobileNavLinkClick(); }}
-                        className="bg-[#CC5500] text-white font-bold py-2 px-4 rounded-full hover:bg-[#A84500] transition duration-300 shadow-md btn-hover-scale mt-4"
+                        className="bg-[#CC5500] text-white font-bold py-2 px-4 rounded-full hover:bg-[#A84500] transition duration-300 shadow-md btn-hover-scale"
                     >
                         Sign In
                     </button>
