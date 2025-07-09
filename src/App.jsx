@@ -13,10 +13,10 @@ import {
     signOut,
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
-    GoogleAuthProvider,
-    signInWithPopup,
-    OAuthProvider,
-    linkWithCredential,
+    GoogleAuthProvider, // NEW: Import GoogleAuthProvider
+    signInWithPopup,    // NEW: Import signInWithPopup
+    OAuthProvider,      // Already present, but good to highlight its use for Apple
+    linkWithCredential, // Already present, but crucial for linking
     reauthenticateWithCredential,
     EmailAuthProvider,
     updateEmail,
@@ -108,10 +108,10 @@ export default function App() {
     const [message, setMessage] = useState({ text: '', type: '' });
     const [showAuthModal, setShowAuthModal] = useState(false);
 
-    // Reintroducing useLocation and useNavigate
+    // Reintroduced useLocation and useNavigate
     const location = useLocation();
     const navigate = useNavigate();
-    // Reintroducing mobile nav states
+    // Reintroduced mobile nav states
     const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
 
@@ -146,14 +146,9 @@ export default function App() {
                 };
 
                 // --- DEBUGGING LOGS FOR ENVIRONMENT VARIABLES ---
-                console.log("App.jsx DEBUG: Checking import.meta.env values:");
-                console.log("  VITE_FIREBASE_API_KEY:", import.meta.env.VITE_FIREBASE_API_KEY);
-                console.log("  VITE_FIREBASE_AUTH_DOMAIN:", import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
-                console.log("  VITE_FIREBASE_PROJECT_ID:", import.meta.env.VITE_FIREBASE_PROJECT_ID);
-                console.log("  VITE_FIREBASE_APP_ID:", import.meta.env.VITE_FIREBASE_APP_ID);
-                console.log("App.jsx DEBUG: Constructed viteConfig object:", viteConfig);
+                console.log("App.jsx DEBUG: Raw import.meta.env:", import.meta.env);
+                console.log("App.jsx DEBUG: Constructed viteConfig:", viteConfig);
                 // --- END DEBUGGING LOGS ---
-
 
                 // Check if Vite config is complete
                 if (viteConfig.apiKey && viteConfig.projectId && viteConfig.appId) {
@@ -260,7 +255,8 @@ export default function App() {
         } catch (error) {
             console.error("Error signing up with email/password:", error);
             showMessage(`Sign Up Failed: ${error.message}`, 'error');
-            return null;
+            // IMPORTANT: Re-throw the error so AuthModal can catch it specifically
+            throw error;
         }
     }, [auth, showMessage]);
 
@@ -282,7 +278,43 @@ export default function App() {
         }
     }, [auth, showMessage]);
 
-    // Function to sign in with Apple ID
+    // NEW: Function to sign in or link with Google
+    const signInWithGoogle = useCallback(async () => {
+        if (!auth) {
+            showMessage('Firebase Auth not initialized.', 'error');
+            return null;
+        }
+        try {
+            const provider = new GoogleAuthProvider();
+            let userCredential;
+
+            if (auth.currentUser && auth.currentUser.isAnonymous) {
+                // If the current user is anonymous, try to link with Google
+                // This uses the current anonymous user and links the Google credential to it.
+                userCredential = await linkWithCredential(auth.currentUser, await signInWithPopup(auth, provider).then(result => result.credential));
+                showMessage('Anonymous account linked with Google!', 'success');
+            } else {
+                // Otherwise, perform a regular sign-in with popup
+                userCredential = await signInWithPopup(auth, provider);
+                showMessage('Signed in with Google successfully!', 'success');
+            }
+            setShowAuthModal(false);
+            return userCredential.user;
+        } catch (error) {
+            console.error("Error signing in with Google:", error);
+            // Handle specific errors like 'auth/account-exists-with-different-credential'
+            if (error.code === 'auth/account-exists-with-different-credential') {
+                showMessage('An account with this email already exists using a different sign-in method. Please sign in with your original method or link accounts in your profile.', 'error');
+                // You might want to offer account linking or re-authentication flow here.
+            } else {
+                showMessage(`Google Sign In Failed: ${error.message}`, 'error');
+            }
+            return null;
+        }
+    }, [auth, showMessage, setShowAuthModal]);
+
+
+    // Function to sign in with Apple (modified to include linking logic)
     const signInWithApple = useCallback(async () => {
         if (!auth) {
             showMessage('Firebase Auth not initialized.', 'error');
@@ -290,16 +322,33 @@ export default function App() {
         }
         try {
             const provider = new OAuthProvider('apple.com');
-            const userCredential = await signInWithPopup(auth, provider);
-            showMessage('Signed in with Apple successfully!', 'success');
+            // Apple requires additional configuration (Service ID, Key ID, Team ID) in Firebase Console.
+            // You might also need to set a nonce for security in more complex scenarios or when not using web SDK.
+            // For simple web SDK, Firebase handles much of this.
+
+            let userCredential;
+
+            if (auth.currentUser && auth.currentUser.isAnonymous) {
+                // If the current user is anonymous, try to link with Apple
+                userCredential = await linkWithCredential(auth.currentUser, await signInWithPopup(auth, provider).then(result => result.credential));
+                showMessage('Anonymous account linked with Apple!', 'success');
+            } else {
+                // Otherwise, perform a regular sign-in with Apple
+                userCredential = await signInWithPopup(auth, provider);
+                showMessage('Signed in with Apple successfully!', 'success');
+            }
             setShowAuthModal(false);
             return userCredential.user;
         } catch (error) {
             console.error("Error signing in with Apple:", error);
-            showMessage(`Apple Sign In Failed: ${error.message}`, 'error');
+            if (error.code === 'auth/account-exists-with-different-credential') {
+                showMessage('An account with this email already exists using a different sign-in method. Please sign in with your original method or link accounts in your profile.', 'error');
+            } else {
+                showMessage(`Apple Sign In Failed: ${error.message}`, 'error');
+            }
             return null;
         }
-    }, [auth, showMessage]);
+    }, [auth, showMessage, setShowAuthModal]);
 
     // Function to sign out the current user
     const signOutUser = useCallback(async () => {
@@ -318,7 +367,7 @@ export default function App() {
         }
     }, [auth, showMessage]);
 
-    // Function to link anonymous account with email/password
+    // Function to link anonymous account with email and password
     const linkAnonymousWithEmailPassword = useCallback(async (email, password) => {
         if (!auth || !auth.currentUser || !auth.currentUser.isAnonymous) {
             showMessage('Not an anonymous user or Firebase Auth not ready.', 'error');
@@ -369,6 +418,7 @@ export default function App() {
         // Reintroduced auth functions
         signUpWithEmailPassword,
         signInWithEmailPassword,
+        signInWithGoogle,
         signInWithApple,
         signOutUser,
         linkAnonymousWithEmailPassword,
@@ -376,7 +426,7 @@ export default function App() {
         setShowAuthModal
     }), [
         firebaseAppInstance, db, auth, currentUserId, authReady, canvasAppId, showMessage,
-        signUpWithEmailPassword, signInWithEmailPassword, signInWithApple, signOutUser,
+        signUpWithEmailPassword, signInWithEmailPassword, signInWithGoogle, signInWithApple, signOutUser,
         linkAnonymousWithEmailPassword, linkAnonymousWithApple, setShowAuthModal
     ]);
 
