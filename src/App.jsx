@@ -463,25 +463,34 @@ export default function App() {
                         <li>
                             <Link
                                 to="/#about"
-                                className={`text-lg text-gray-700 font-medium animated-link ${isLinkActive('/#about') ? 'font-bold' : ''}`}
+                                className={`group relative overflow-hidden text-lg text-gray-700 font-medium transition duration-300 ease-in-out hover:text-custom-beige ${isLinkActive('/#about') ? 'font-bold' : ''}`}
                             >
-                                About
+                                <span className="relative inline-block">
+                                    About
+                                    <span className="absolute left-0 bottom-0 h-0.5 bg-[#CC5500] w-0 transition-all duration-300 group-hover:w-full"></span>
+                                </span>
                             </Link>
                         </li>
                         <li>
                             <Link
                                 to="/reviews"
-                                className={`text-lg text-gray-700 font-medium animated-link ${isLinkActive('/reviews') ? 'font-bold' : ''}`}
+                                className={`group relative overflow-hidden text-lg text-gray-700 font-medium transition duration-300 ease-in-out hover:text-custom-beige ${isLinkActive('/reviews') ? 'font-bold' : ''}`}
                             >
-                                Reviews
+                                <span className="relative inline-block">
+                                    Reviews
+                                    <span className="absolute left-0 bottom-0 h-0.5 bg-[#CC5500] w-0 transition-all duration-300 group-hover:w-full"></span>
+                                </span>
                             </Link>
                         </li>
                         <li>
                             <Link
                                 to="/#contact"
-                                className={`text-lg text-gray-700 font-medium animated-link ${isLinkActive('/#contact') ? 'font-bold' : ''}`}
+                                className={`group relative overflow-hidden text-lg text-gray-700 font-medium transition duration-300 ease-in-out hover:text-custom-beige ${isLinkActive('/#contact') ? 'font-bold' : ''}`}
                             >
-                                Contact
+                                <span className="relative inline-block">
+                                    Contact
+                                    <span className="absolute left-0 bottom-0 h-0.5 bg-[#CC5500] w-0 transition-all duration-300 group-hover:w-full"></span>
+                                </span>
                             </Link>
                         </li>
                         <li>
@@ -529,27 +538,36 @@ export default function App() {
 
                 <Link
                     to="/#about"
-                    className="text-2xl text-gray-800 my-4 animated-link transition duration-300 ease-in-out hover:text-custom-beige"
+                    className="group relative overflow-hidden text-2xl text-gray-800 my-4 transition duration-300 ease-in-out hover:text-custom-beige"
                     onClick={handleMobileNavLinkClick}
                     style={{ animationDelay: '0.1s' }}
                 >
-                    About
+                    <span className="relative inline-block">
+                        About
+                        <span className="absolute left-0 bottom-0 h-0.5 bg-[#CC5500] w-0 transition-all duration-300 group-hover:w-full"></span>
+                    </span>
                 </Link>
                 <Link
                     to="/reviews"
-                    className="text-2xl text-gray-800 my-4 animated-link transition duration-300 ease-in-out hover:text-custom-beige"
+                    className="group relative overflow-hidden text-2xl text-gray-800 my-4 transition duration-300 ease-in-out hover:text-custom-beige"
                     onClick={handleMobileNavLinkClick}
                     style={{ animationDelay: '0.2s' }}
                 >
-                    Reviews
+                    <span className="relative inline-block">
+                        Reviews
+                        <span className="absolute left-0 bottom-0 h-0.5 bg-[#CC5500] w-0 transition-all duration-300 group-hover:w-full"></span>
+                    </span>
                 </Link>
                 <Link
                     to="/#contact"
-                    className="text-2xl text-gray-800 my-4 animated-link transition duration-300 ease-in-out hover:text-custom-beige"
+                    className="group relative overflow-hidden text-2xl text-gray-800 my-4 transition duration-300 ease-in-out hover:text-custom-beige"
                     onClick={handleMobileNavLinkClick}
                     style={{ animationDelay: '0.3s' }}
                 >
-                    Contact
+                    <span className="relative inline-block">
+                        Contact
+                        <span className="absolute left-0 bottom-0 h-0.5 bg-[#CC5500] w-0 transition-all duration-300 group-hover:w-full"></span>
+                    </span>
                 </Link>
                 {currentUserId ? ( // Check if currentUserId exists (user is signed in)
                     <button

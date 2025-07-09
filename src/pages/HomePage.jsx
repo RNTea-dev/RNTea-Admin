@@ -87,9 +87,6 @@ const HomePage = () => {
             // For direct fetch, you'd need the full URL.
             // Since we're in a React app, we can use the callable function approach if Firebase SDK is available for functions.
             // However, for simplicity and direct fetch, let's assume a generic callable endpoint.
-            // A more robust solution would involve Firebase's `firebase/functions` module.
-
-            // For now, let's assume a direct fetch to a URL you'd get after deployment.
             // A placeholder URL is used. You MUST replace this with your actual deployed function URL.
             const functionsBaseUrl = `https://${appId}.cloudfunctions.net`; // Example base URL, adjust as needed
             const functionUrl = `${functionsBaseUrl}/sendContactEmail`; // Assuming function name is sendContactEmail
@@ -150,7 +147,7 @@ const HomePage = () => {
                 <div className="relative z-10 max-w-3xl mx-auto">
                     <h1 className="text-5xl md:text-6xl lg:text-7xl font-extrabold mb-6 leading-tight animate-fade-in-down drop-shadow-md">RNTea: Rate, Navigate, Trust.</h1>
                     <p className="text-xl md:text-2xl mb-10 text-gray-700 animate-fade-in-up"> Do you really trust your Doctors? Let's hear from experienced RNs for a change. </p>
-                    {/* Updated Link to scroll to the ReviewsHubPage section */}
+                    {/* Original Link to scroll to the ReviewsHubPage section */}
                     <Link to="#full-reviews-hub" className="bg-white text-gray-800 hover:bg-gray-100 font-bold py-3 px-10 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-110 hover:shadow-2xl border border-gray-200 animate-fade-in-up antialiased"> View All Reviews </Link>
                 </div>
             </section>
@@ -160,7 +157,7 @@ const HomePage = () => {
                 <div className="container mx-auto flex flex-col md:flex-row items-center gap-12">
                     <div className="md:w-1/2 flex justify-center order-2 md:order-1 animate-slide-in-left">
                         {/* Image of a collage of nurses */}
-                       <img src="/Express-collage.jpg" alt="Collage of diverse medical professionals" className="rounded-lg shadow-xl border-4 w-full max-w-md object-cover" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x300/F0F0F0/888888?text=Image+Not+Loaded'; }} />
+                       <img src="/Express-collage.jpg" alt="Collage of diverse medical professionals working together" className="rounded-lg shadow-xl border-4 w-full max-w-md object-cover" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x300/F0F0F0/888888?text=Image+Not+Loaded'; }} />
                     </div>
                     <div className="md:w-1/2 text-center md:text-left order-1 md:order-2 animate-slide-in-right">
                         <h2 className="text-4xl md:text-5xl font-bold text-gray-800 mb-6">Our Philosophy</h2>
@@ -189,7 +186,10 @@ const HomePage = () => {
                     <h1 className="text-4xl md:text-5xl font-extrabold text-gray-800 text-center mb-16 animate-fade-in-down">Contact Us!</h1>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                         {/* Left Column: Send us a Message Form */}
-                        <div className="bg-gray-50 p-8 rounded-lg shadow-md animate-slide-in-left">
+                        {/* Added group, relative, overflow-hidden. Inner div for animated top border. */}
+                        <div className="bg-gray-50 p-8 rounded-lg shadow-md animate-slide-in-left group relative overflow-hidden">
+                            {/* Animated top border element */}
+                            <div className="absolute top-0 left-0 h-2 bg-[#CC5500] w-0 transition-all duration-300 ease-out group-hover:w-full"></div>
                             <h2 className="text-3xl font-bold text-gray-800 mb-6">Send us a Message</h2>
                             <form onSubmit={handleContactSubmit}>
                                 <div className="mb-4">
@@ -221,7 +221,10 @@ const HomePage = () => {
                         </div>
 
                         {/* Right Column: Find Us & Connect With Us */}
-                        <div className="bg-gray-50 p-8 rounded-lg shadow-md animate-slide-in-right">
+                        {/* Added group, relative, overflow-hidden. Inner div for animated top border. */}
+                        <div className="bg-gray-50 p-8 rounded-lg shadow-md animate-slide-in-right group relative overflow-hidden">
+                            {/* Animated top border element */}
+                            <div className="absolute top-0 left-0 h-2 bg-[#CC5500] w-0 transition-all duration-300 ease-out group-hover:w-full"></div>
                             <h2 className="text-3xl font-bold text-gray-800 mb-6">Find Us</h2>
 
                             <div className="mb-8">
@@ -243,29 +246,29 @@ const HomePage = () => {
                                         <p className="text-gray-700 font-medium">Business Inquiries</p>
                                         <a href="mailto:business@rntea.com" className="text-blue-600 hover:underline">business@rntea.com</a>
                                     </div>
-                                </div>
+                                    </div>
                             </div>
 
                             <div>
                                 <h3 className="text-xl font-semibold text-gray-800 mb-4">Connect with Us</h3>
                                 <div className="flex space-x-6 justify-start">
-                                    <a href="https://facebook.com/rntea" target="_blank" className="social-icon-hover text-blue-600 hover:text-blue-700 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
+                                    <a href="https://facebook.com/rntea" target="_blank" rel="noopener noreferrer" className="social-icon-hover text-blue-600 hover:text-blue-700 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
                                         <svg xmlns="http://www.w3.org/2000/svg" className="w-full h-full" fill="currentColor" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet">
                                             <path d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808c-3.271 0-4.192 1.552-4.192 4.615v3.385z"/>
                                         </svg>
                                     </a>
-                                    <a href="https://twitter.com/rntea_official" target="_blank" className="social-icon-hover text-gray-800 hover:text-black transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
+                                    <a href="https://twitter.com/rntea_official" target="_blank" rel="noopener noreferrer" className="social-icon-hover text-gray-800 hover:text-black transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
                                         {/* X (formerly Twitter) icon */}
                                         <svg className="w-full h-full" fill="currentColor" viewBox="0 0 1200 1227" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
                                             <path d="M714.163 519.284L1160.89 0H1055.03L667.137 450.887L357.328 0H0L468.492 671.544L0 1226.37H105.866L515.414 750.206L852.076 1226.37H1200L714.163 519.284ZM569.165 687.828L521.617 619.927L144.036 79.6262H302.46L603.935 515.043L651.483 582.944L1055.03 1147.37H896.59L569.165 687.828Z"/>
                                         </svg>
                                     </a>
-                                    <a href="https://linkedin.com/company/rntea" target="_blank" className="social-icon-hover text-blue-700 hover:text-blue-800 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
+                                    <a href="https://linkedin.com/company/rntea" target="_blank" rel="noopener noreferrer" className="social-icon-hover text-blue-700 hover:text-blue-800 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
                                         <svg xmlns="http://www.w3.org/2000/svg" className="w-full h-full" fill="currentColor" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet">
                                             <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
                                         </svg>
                                     </a>
-                                    <a href="https://instagram.com/rntea_official" target="_blank" className="social-icon-hover text-pink-500 hover:text-pink-600 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
+                                    <a href="https://instagram.com/rntea_official" target="_blank" rel="noopener noreferrer" className="social-icon-hover text-pink-500 hover:text-pink-600 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
                                         {/* Modern Instagram icon - removed explicit width/height from SVG, relying on parent a tag and flex centering */}
                                         <svg className="w-full h-full" fill="currentColor" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet">
                                             <path d="M7.8 2h8.4C19.4 2 22 4.6 22 7.8v8.4c0 3.2-2.6 5.8-5.8 5.8H7.8C4.6 22 2 19.4 2 16.2V7.8C2 4.6 4.6 2 7.8 2zm-.2 2A2.2 2.2 0 0 0 5.4 6.2v8.4c0 1.2.9 2.2 2.2 2.2h8.4a2.2 2.2 0 0 0 2.2-2.2V6.2A2.2 2.2 0 0 0 16.2 4H7.6zM12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm6.5-3A1.5 1.5 0 1 0 18.5 7 1.5 1.5 0 0 0 18.5 4z"/>

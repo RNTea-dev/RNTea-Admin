@@ -867,7 +867,7 @@ const ReviewsHubPage = () => {
 
                     <div className="mb-4 mt-8">
                         <p className="text-lg font-semibold text-gray-800">Hospitals with reviews:</p>
-                        <div id="hospitals-list" className="flex flex-wrap gap-2 mt-2 max-h-60 overflow-y-auto border border-gray-200 rounded-md p-2">
+                        <div id="hospitals-list" className="flex flex-wrap gap-2 mt-2 max-h-60 overflow-y-auto border border-gray-200 rounded-md p-2" aria-live="polite"> {/* Added aria-live */}
                             {loadingHospitals && <p className="text-gray-500 italic w-full text-center">Loading hospitals...</p>}
                             {noHospitalsFound && !loadingHospitals && <p className="text-gray-500 italic w-full text-center">No hospitals found yet. Be the first to add a review!</p>}
                             {displayedHospitals.map((hospital) => (
@@ -963,7 +963,7 @@ const ReviewsHubPage = () => {
 
                     <div className="mb-4">
                         <p className="text-lg font-semibold text-gray-800">Doctors with reviews at <span id="display-selected-hospital" className="text-gray-800">{selectedHospital?.name}</span>:</p>
-                        <div id="doctors-list" className="flex flex-wrap gap-2 mt-2 max-h-60 overflow-y-auto border border-gray-200 rounded-md p-2">
+                        <div id="doctors-list" className="flex flex-wrap gap-2 mt-2 max-h-60 overflow-y-auto border border-gray-200 rounded-md p-2" aria-live="polite"> {/* Added aria-live */}
                             {loadingDoctors && <p className="text-gray-500 italic w-full text-center">Loading doctors...</p>}
                             {noDoctorsFound && !loadingDoctors && <p className="text-500 italic w-full text-center">No doctors found for this hospital yet.</p>}
                             {displayedDoctors.map((doctor) => (
@@ -1063,84 +1063,111 @@ const ReviewsHubPage = () => {
                             </button>
                         )}
 
-                        {loadingReviews && <p className="text-gray-700 italic text-center">Loading reviews...</p>}
-                        {noReviewsForDoctor && !loadingReviews && <p className="text-gray-700 italic text-center">No reviews found for this doctor yet. Be the first to add one!</p>}
+                        {loadingReviews && <p className="text-gray-700 italic text-center" aria-live="polite">Loading reviews...</p>} {/* Added aria-live */}
+                        {noReviewsForDoctor && !loadingReviews && <p className="text-gray-700 italic text-center" aria-live="polite">No reviews found for this doctor yet. Be the first to add one!</p>} {/* Added aria-live */}
 
                         {reviews.length > 0 && (
                             <div id="reviews-list" className="space-y-6">
-                                {reviews.map((review, index) => (
-                                    <div key={review.date.getTime() + index} className="bg-white p-5 rounded-lg shadow-md border border-gray-200">
-                                        <div className="flex justify-between items-start mb-3">
-                                            <div className="min-w-0">
-                                                <StarRating rating={review.stars} onRatingChange={() => {}} readOnly={true} />
-                                                <p className="text-sm text-gray-500 mt-1 break-words">
-                                                    {review.nursingField} on: {review.date instanceof Date ? review.date.toLocaleDateString() : 'N/A'}
-                                                </p>
+                                {reviews.map((review, index) => {
+                                    // Construct the full review schema for each review
+                                    const reviewSchema = {
+                                        "@context": "https://schema.org",
+                                        "@type": "Review",
+                                        "itemReviewed": {
+                                            "@type": "Physician", // Or Hospital, depending on context
+                                            "name": selectedDoctor?.name, // Name of the doctor being reviewed
+                                            "url": `https://www.myrntea.com/doctors/${selectedDoctor?.id}` // Canonical URL for the doctor's profile
+                                        },
+                                        "reviewRating": {
+                                            "@type": "Rating",
+                                            "ratingValue": review.stars,
+                                            "bestRating": 5 // Assuming a 5-star rating system
+                                        },
+                                        "author": {
+                                            "@type": "Person",
+                                            "name": review.reviewerId // Displaying the masked ID
+                                        },
+                                        "reviewBody": review.comment,
+                                        "datePublished": review.date instanceof Date ? review.date.toISOString() : new Date(review.date).toISOString()
+                                    };
+
+                                    return (
+                                        <div key={review.date.getTime() + index} className="bg-white p-5 rounded-lg shadow-md border border-gray-200">
+                                            {/* Inject schema for this specific review */}
+                                            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(reviewSchema) }} />
+
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div className="min-w-0">
+                                                    <StarRating rating={review.stars} onRatingChange={() => {}} readOnly={true} />
+                                                    <p className="text-sm text-gray-500 mt-1 break-words">
+                                                        {review.nursingField} on: {review.date instanceof Date ? review.date.toLocaleDateString() : 'N/A'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <p className="text-gray-800 leading-relaxed mb-4">{review.comment}</p>
+
+                                            {/* Comments Section */}
+                                            <div className="mt-4 border-t border-gray-100 pt-4">
+                                                <h4 className="text-md font-semibold text-gray-700 mb-3">Comments ({review.comments ? review.comments.length : 0})</h4>
+                                                {review.comments && review.comments.length > 0 ? (
+                                                    <div className="space-y-3 mb-4">
+                                                        {review.comments.map((comment, commentIndex) => (
+                                                            <div key={comment.date.getTime() + '_' + commentIndex} className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700 border border-gray-100">
+                                                                <p>{comment.text}</p>
+                                                                <p className="text-xs text-gray-500 mt-1">
+                                                                    by {comment.userId} on {comment.date instanceof Date ? comment.date.toLocaleDateString() : 'N/A'}
+                                                                </p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-sm text-gray-500 mb-3">No comments yet. Be the first!</p>
+                                                )}
+                                                {/* Add Comment Button - Always visible, but triggers login if not authenticated */}
+                                                <button
+                                                    onClick={() => {
+                                                        if (!currentUserId || currentUserIsAnonymous) {
+                                                            showMessage('Login or Sign Up to add a comment.', 'info');
+                                                            setShowAuthModal(true);
+                                                        } else {
+                                                            setShowCommentInput(prev => ({ ...prev, [review.date.getTime()]: !prev[review.date.getTime()] }));
+                                                        }
+                                                    }}
+                                                    className="text-blue-500 hover:underline text-sm mb-3"
+                                                >
+                                                    {showCommentInput[review.date.getTime()] && currentUserId && !currentUserIsAnonymous ? 'Cancel Comment' : 'Add a Comment'}
+                                                </button>
+
+                                                {showCommentInput[review.date.getTime()] && currentUserId && !currentUserIsAnonymous && ( // Only show input if logged in and not anonymous
+                                                    <div className="flex mt-2">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Write a comment..."
+                                                            className="flex-grow p-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter' && e.target.value.trim()) {
+                                                                    handleAddCommentToReview(review.date.getTime(), e.target.value);
+                                                                    e.target.value = ''; // Clear input after posting
+                                                                }
+                                                            }}
+                                                            value={commentText[review.date.getTime()] || ''} // Controlled component for comment input
+                                                            onChange={(e) => setCommentText(prev => ({ ...prev, [review.date.getTime()]: e.target.value }))}
+                                                        />
+                                                        <button
+                                                            className="submit-comment-btn bg-gray-600 text-white px-4 py-2 rounded-r-md hover:bg-gray-700 transition duration-200 btn-hover-scale"
+                                                            onClick={() => {
+                                                                const valueToPost = commentText[review.date.getTime()];
+                                                                handleAddCommentToReview(review.date.getTime(), valueToPost);
+                                                            }}
+                                                        >
+                                                            Post
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
-                                        <p className="text-gray-800 leading-relaxed mb-4">{review.comment}</p>
-
-                                        {/* Comments Section */}
-                                        <div className="mt-4 border-t border-gray-100 pt-4">
-                                            <h4 className="text-md font-semibold text-gray-700 mb-3">Comments ({review.comments ? review.comments.length : 0})</h4>
-                                            {review.comments && review.comments.length > 0 ? (
-                                                <div className="space-y-3 mb-4">
-                                                    {review.comments.map((comment, commentIndex) => (
-                                                        <div key={comment.date.getTime() + '_' + commentIndex} className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700 border border-gray-100">
-                                                            <p>{comment.text}</p>
-                                                            <p className="text-xs text-gray-500 mt-1">
-                                                                by {comment.userId} on {comment.date instanceof Date ? comment.date.toLocaleDateString() : 'N/A'}
-                                                            </p>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <p className="text-sm text-gray-500 mb-3">No comments yet. Be the first!</p>
-                                            )}
-                                            {/* Add Comment Button - Always visible, but triggers login if not authenticated */}
-                                            <button
-                                                onClick={() => {
-                                                    if (!currentUserId || currentUserIsAnonymous) {
-                                                        showMessage('Login or Sign Up to add a comment.', 'info');
-                                                        setShowAuthModal(true);
-                                                    } else {
-                                                        setShowCommentInput(prev => ({ ...prev, [review.date.getTime()]: !prev[review.date.getTime()] }));
-                                                    }
-                                                }}
-                                                className="text-blue-500 hover:underline text-sm mb-3"
-                                            >
-                                                {showCommentInput[review.date.getTime()] && currentUserId && !currentUserIsAnonymous ? 'Cancel Comment' : 'Add a Comment'}
-                                            </button>
-
-                                            {showCommentInput[review.date.getTime()] && currentUserId && !currentUserIsAnonymous && ( // Only show input if logged in and not anonymous
-                                                <div className="flex mt-2">
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Write a comment..."
-                                                        className="flex-grow p-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter' && e.target.value.trim()) {
-                                                                handleAddCommentToReview(review.date.getTime(), e.target.value);
-                                                                e.target.value = ''; // Clear input after posting
-                                                            }
-                                                        }}
-                                                        value={commentText[review.date.getTime()] || ''} // Controlled component for comment input
-                                                        onChange={(e) => setCommentText(prev => ({ ...prev, [review.date.getTime()]: e.target.value }))}
-                                                    />
-                                                    <button
-                                                        className="submit-comment-btn bg-gray-600 text-white px-4 py-2 rounded-r-md hover:bg-gray-700 transition duration-200 btn-hover-scale"
-                                                        onClick={() => {
-                                                            const valueToPost = commentText[review.date.getTime()];
-                                                            handleAddCommentToReview(review.date.getTime(), valueToPost);
-                                                        }}
-                                                    >
-                                                        Post
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </section>
