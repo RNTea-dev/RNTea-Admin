@@ -7,7 +7,7 @@ import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import { initializeApp } from 'firebase/app';
 import {
     getAuth,
-    // signInAnonymously, // Commented out to prevent automatic anonymous sign-in
+    // signInAnonymously, // Commented out to prevent automatic anonymous-sign-in
     signInWithCustomToken,
     onAuthStateChanged,
     signOut,
@@ -40,6 +40,9 @@ import {
 // Reintroducing Page Components imports
 import HomePage from './pages/HomePage.jsx';
 import ReviewsHubPage from './pages/ReviewsHubPage.jsx';
+// NEW: Import the PrivacyPolicyModal component
+import PrivacyPolicyModal from './components/PrivacyPolicyModal.jsx';
+
 
 // Reintroducing Reusable Components imports
 import MessageBox from './components/MessageBox.jsx';
@@ -107,6 +110,9 @@ export default function App() {
     // Reintroduced message and showAuthModal states
     const [message, setMessage] = useState({ text: '', type: '' });
     const [showAuthModal, setShowAuthModal] = useState(false);
+    // NEW: State for Privacy Policy Modal
+    const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+
 
     // Reintroduced useLocation and useNavigate
     const location = useLocation();
@@ -290,7 +296,6 @@ export default function App() {
 
             if (auth.currentUser && auth.currentUser.isAnonymous) {
                 // If the current user is anonymous, try to link with Google
-                // This uses the current anonymous user and links the Google credential to it.
                 userCredential = await linkWithCredential(auth.currentUser, await signInWithPopup(auth, provider).then(result => result.credential));
                 showMessage('Anonymous account linked with Google!', 'success');
             } else {
@@ -305,7 +310,6 @@ export default function App() {
             // Handle specific errors like 'auth/account-exists-with-different-credential'
             if (error.code === 'auth/account-exists-with-different-credential') {
                 showMessage('An account with this email already exists using a different sign-in method. Please sign in with your original method or link accounts in your profile.', 'error');
-                // You might want to offer account linking or re-authentication flow here.
             } else {
                 showMessage(`Google Sign In Failed: ${error.message}`, 'error');
             }
@@ -348,7 +352,7 @@ export default function App() {
             }
             return null;
         }
-    }, [auth, showMessage, setShowAuthModal]);
+    }, [auth, showMessage]);
 
     // Function to sign out the current user
     const signOutUser = useCallback(async () => {
@@ -602,7 +606,7 @@ export default function App() {
                                 <Route path="/" element={<HomePage />} />
                                 <Route path="/reviews" element={<ReviewsHubPage />} />
                                 {/* Keeping test route for now, can remove later */}
-                                <Route path="/test-route" element={<h2 className="text-center text-2xl mt-8">This is a Test Route.</h2>} />
+                                <Route path="/test-route" element={<h2 className="text-center text-2xl text-center mt-8">This is a Test Route.</h2>} />
                             </Routes>
                             {/* Reintroduced AuthModal conditionally */}
                             {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
@@ -610,6 +614,17 @@ export default function App() {
                     )}
                 </ErrorBoundary>
             </main>
+            {/* Simplified Footer Section */}
+            <footer className="bg-white py-4 px-6 md:px-10 lg:px-16 border-t border-gray-200 text-center text-gray-600">
+                <p className="text-sm">
+                    &copy; {new Date().getFullYear()} RNTea business. All Rights Reserved.
+                    {/* Changed to button to open modal */}
+                    <button onClick={() => setShowPrivacyModal(true)} className="ml-1 text-blue-600 hover:underline focus:outline-none">Privacy Policy</button>
+                </p>
+            </footer>
+
+            {/* NEW: Conditionally render the Privacy Policy Modal */}
+            {showPrivacyModal && <PrivacyPolicyModal onClose={() => setShowPrivacyModal(false)} />}
         </div>
     );
 }
