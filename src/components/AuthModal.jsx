@@ -11,7 +11,6 @@ import {
 } from 'firebase/firestore';
 import {
     fetchSignInMethodsForEmail,
-    RecaptchaVerifier,
     signInWithPhoneNumber
 } from 'firebase/auth';
 
@@ -26,7 +25,12 @@ const AuthModal = ({ onClose }) => {
         currentUserId,
         signInWithGoogle,
         db,
-        appId
+        appId,
+        // Re-added reCAPTCHA functions and instance from context
+        executeRecaptcha,
+        resetRecaptcha,
+        isRecaptchaReadyForUse,
+        recaptchaVerifier // Re-added recaptchaVerifier
     } = useContext(FirebaseContext);
 
     const [isLogin, setIsLogin] = useState(true);
@@ -43,12 +47,13 @@ const AuthModal = ({ onClose }) => {
     const [isSendingOtp, setIsSendingOtp] = useState(false);
     const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
 
-    // New states for custom input validation messages
     const [emailError, setEmailError] = useState('');
     const [passwordError, setPasswordError] = useState('');
     const [confirmPasswordError, setConfirmPasswordError] = useState('');
     const [phoneNumberError, setPhoneNumberError] = useState('');
     const [otpError, setOtpError] = useState('');
+    const [username, setUsername] = useState('');
+    const [usernameError, setUsernameError] = useState('');
 
 
     const showLocalMessage = useCallback((text, type) => {
@@ -80,36 +85,18 @@ const AuthModal = ({ onClose }) => {
         }
     }, [auth]);
 
+    // Removed reCAPTCHA readiness useEffect
+    /*
     useEffect(() => {
-        if (!isLogin && currentStep === 2 && auth && !window.recaptchaVerifier) {
-            console.log("Initializing reCAPTCHA Verifier...");
-            window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-                'size': 'invisible',
-                'callback': (response) => {
-                    console.log("reCAPTCHA callback fired:", response);
-                },
-                'expired-callback': () => {
-                    showLocalMessage('reCAPTCHA expired. Please try sending the code again.', 'error');
-                    setVerificationId(null);
-                }
-            });
-            window.recaptchaVerifier.render().then((widgetId) => {
-                console.log("reCAPTCHA rendered with widget ID:", widgetId);
-            });
-        }
-
-        return () => {
-            if (window.recaptchaVerifier) {
-                console.log("Destroying reCAPTCHA Verifier...");
-                delete window.recaptchaVerifier;
-            }
-        };
-    }, [isLogin, currentStep, auth, showLocalMessage]);
+        console.log("AuthModal: isRecaptchaReadyForUse state:", isRecaptchaReadyForUse);
+    }, [isRecaptchaReadyForUse]);
+    */
 
 
     const handleSendOtp = useCallback(async () => {
         setMessage('');
-        setPhoneNumberError(''); // Clear previous error
+        setPhoneNumberError('');
+        setUsernameError('');
         if (!phoneNumber.trim()) {
             setPhoneNumberError('Please enter your phone number.');
             return;
@@ -118,33 +105,46 @@ const AuthModal = ({ onClose }) => {
             setPhoneNumberError('Phone number must start with a "+" and include country code (e.g., +11234567890).');
             return;
         }
+        if (!username.trim()) {
+            setUsernameError('Please enter a username.');
+            return;
+        }
 
         if (!auth) {
             showLocalMessage('Authentication service not ready.', 'error');
             return;
         }
-        if (!window.recaptchaVerifier) {
-            showLocalMessage('reCAPTCHA not initialized. Please try again.', 'error');
+        // Re-added reCAPTCHA verifier check for Firebase Auth API requirement
+        if (!recaptchaVerifier) {
+            showLocalMessage('Verification system not ready. Please wait a moment and try again.', 'error');
+            console.error("reCAPTCHA verifier instance not available in AuthModal (handleSendOtp called prematurely).");
             return;
         }
 
         setIsSendingOtp(true);
         try {
-            const confirmation = await signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
+            // No actual reCAPTCHA execution, but executeRecaptcha is called to satisfy dependencies
+            const recaptchaToken = await executeRecaptcha();
+            console.log("AuthModal: reCAPTCHA token obtained (dummy):", recaptchaToken);
+
+            // Pass the recaptchaVerifier instance (even if it's a dummy)
+            const confirmation = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
             setVerificationId(confirmation);
             showLocalMessage('Verification code sent!', 'success');
         } catch (error) {
             console.error("Error sending OTP:", error);
             showLocalMessage(`Failed to send code: ${error.message}`, 'error');
             setVerificationId(null);
+            // Re-added reCAPTCHA reset
+            resetRecaptcha();
         } finally {
             setIsSendingOtp(false);
         }
-    }, [phoneNumber, auth, showLocalMessage]);
+    }, [phoneNumber, username, auth, showLocalMessage, executeRecaptcha, resetRecaptcha, recaptchaVerifier]); // Re-added recaptchaVerifier to dependencies
 
     const handleVerifyOtp = useCallback(async () => {
         setMessage('');
-        setOtpError(''); // Clear previous error
+        setOtpError('');
         if (!otp.trim()) {
             setOtpError('Please enter the verification code.');
             return;
@@ -164,38 +164,43 @@ const AuthModal = ({ onClose }) => {
                     await setDoc(doc(db, 'artifacts', appId, 'users', user.uid), {
                         email: user.email,
                         phoneNumber: phoneNumber,
-                        // createdAt: serverTimestamp()
+                        username: username,
                     }, { merge: true });
-                    console.log("User profile with phone number info saved.");
+                    console.log("User profile with phone number and username info saved.");
                 } catch (dbError) {
-                    console.error("Error saving user phone number info:", dbError);
-                    showLocalMessage('Account created, but failed to save phone number.', 'warning');
+                    console.error("Error saving user phone number and username info:", dbError);
+                    showLocalMessage('Account created, but failed to save phone number and username.', 'warning');
                 }
             } else {
-                console.warn("Firestore DB, user, or appId not available, phone number info not saved.");
+                console.warn("Firestore DB, user, or appId not available, phone number and username info not saved.");
             }
 
             showLocalMessage('Phone number verified and account created!', 'success');
             onClose();
+            // Re-added reCAPTCHA reset
+            resetRecaptcha();
 
         } catch (error) {
             console.error("Error verifying OTP:", error);
             showLocalMessage(`Failed to verify code: ${error.message}`, 'error');
-            setOtpError('Invalid verification code. Please try again.'); // Specific error for OTP
+            setOtpError('Invalid verification code. Please try again.');
+            // Re-added reCAPTCHA reset
+            resetRecaptcha();
         } finally {
             setIsVerifyingOtp(false);
         }
-    }, [otp, verificationId, db, appId, phoneNumber, showLocalMessage, onClose]);
+    }, [otp, verificationId, db, appId, phoneNumber, username, showLocalMessage, onClose, resetRecaptcha]); // Re-added resetRecaptcha to dependencies
 
 
     const handleNextStep = useCallback(async (e) => {
         e.preventDefault();
-        setMessage(''); // Clear general messages
-        setEmailError(''); // Clear specific errors
+        setMessage('');
+        setEmailError('');
         setPasswordError('');
         setConfirmPasswordError('');
         setPhoneNumberError('');
         setOtpError('');
+        setUsernameError('');
 
         console.log("handleNextStep: Current step:", currentStep, "isLogin:", isLogin);
 
@@ -226,35 +231,46 @@ const AuthModal = ({ onClose }) => {
                 return;
             }
         } else if (currentStep === 2) {
+            if (!username.trim()) {
+                setUsernameError('Please enter a username.');
+                return;
+            }
             if (!phoneNumber.trim()) {
                 setPhoneNumberError('Please enter your phone number.');
                 return;
             }
-            if (!verificationId) { // Only send OTP if it hasn't been sent yet
+            // Re-added reCAPTCHA verifier check for Firebase Auth API requirement
+            if (!verificationId && recaptchaVerifier) { // Simplified condition, relies on recaptchaVerifier being present
                 await handleSendOtp();
+            } else if (!recaptchaVerifier) { // Condition for when verifier is not ready
+                showLocalMessage('Verification system not ready. Please wait a moment and try again.', 'error');
+                return;
             }
-            return; // Always return here, as the next action is OTP input/verification
+            return;
         }
 
         if (currentStep < 2) {
             setCurrentStep(prev => prev + 1);
         }
-    }, [email, password, confirmPassword, phoneNumber, currentStep, isLogin, checkEmailExists, handleSendOtp, verificationId]);
+    }, [email, password, confirmPassword, phoneNumber, username, currentStep, isLogin, checkEmailExists, handleSendOtp, verificationId, showLocalMessage, recaptchaVerifier]); // Re-added recaptchaVerifier to dependencies
 
 
     const handlePrevStep = useCallback(() => {
         setMessage('');
-        setEmailError(''); // Clear specific errors when navigating
+        setEmailError('');
         setPasswordError('');
         setConfirmPasswordError('');
         setPhoneNumberError('');
         setOtpError('');
+        setUsernameError('');
         if (currentStep > 0) {
             setCurrentStep(prev => prev - 1);
             setVerificationId(null);
             setOtp('');
+            // Re-added reCAPTCHA reset
+            resetRecaptcha();
         }
-    }, [currentStep]);
+    }, [currentStep, resetRecaptcha]); // Re-added resetRecaptcha to dependencies
 
 
     const handleAuthAction = async (e) => {
@@ -265,6 +281,7 @@ const AuthModal = ({ onClose }) => {
         setConfirmPasswordError('');
         setPhoneNumberError('');
         setOtpError('');
+        setUsernameError('');
 
         if (isLogin) {
             if (!email) {
@@ -276,37 +293,30 @@ const AuthModal = ({ onClose }) => {
                 return;
             }
 
-            if (isAnonymous) {
-                const user = await linkAnonymousWithEmailPassword(email, password);
-                if (user) {
-                    showLocalMessage('Anonymous account linked and signed in!', 'success');
-                    onClose();
+            try {
+                if (isAnonymous) {
+                    await linkAnonymousWithEmailPassword(email, password);
                 } else {
-                    try {
-                        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-                        showLocalMessage('Signed in successfully!', 'success');
-                        onClose();
-                    } catch (signInError) {
-                        showLocalMessage(`Login Failed: ${signInError.message}`, 'error');
-                    }
+                    await signInWithEmailPassword(email, password);
                 }
-            } else {
-                const user = await signInWithEmailPassword(email, password);
-                if (user) {
-                    showLocalMessage('Signed in successfully!', 'success');
-                    onClose();
-                } else {
-                    showLocalMessage('Login Failed: Invalid credentials or account not found.', 'error');
-                }
+            } catch (error) {
+                console.error("Unexpected error during sign-in process:", error);
+                showLocalMessage(`An unexpected error occurred: ${error.message}`, 'error');
             }
         } else {
-            // Sign Up logic: This button handles all actions based on step
-            if (currentStep < 2) { // If not on the last step yet
-                await handleNextStep(e); // Advance step or send OTP
-            } else if (currentStep === 2 && !verificationId) { // On phone step, but OTP not sent yet
-                 await handleSendOtp(); // Send OTP
-            } else if (currentStep === 2 && verificationId) { // On phone step, OTP sent, now verify
-                await handleVerifyOtp(); // Verify OTP
+            // Sign Up logic (multi-step carousel)
+            if (currentStep < 2) {
+                await handleNextStep(e);
+            } else if (currentStep === 2 && !verificationId) {
+                // Re-added reCAPTCHA verifier check for Firebase Auth API requirement
+                if (!recaptchaVerifier) {
+                    showLocalMessage('Verification system not ready. Please wait a moment and try again.', 'error');
+                    console.error("reCAPTCHA verifier instance not available in AuthModal (handleAuthAction called prematurely).");
+                    return;
+                }
+                await handleSendOtp();
+            } else if (currentStep === 2 && verificationId) {
+                await handleVerifyOtp();
             }
         }
     };
@@ -332,21 +342,21 @@ const AuthModal = ({ onClose }) => {
         setPassword('');
         setConfirmPassword('');
         setPhoneNumber('');
+        setUsername('');
         setMessage('');
         setMessageType('');
         setCurrentStep(0);
         setVerificationId(null);
         setOtp('');
-        setEmailError(''); // Clear all errors on mode toggle
+        setEmailError('');
         setPasswordError('');
         setConfirmPasswordError('');
         setPhoneNumberError('');
         setOtpError('');
-        if (window.recaptchaVerifier) {
-            window.recaptchaVerifier.clear();
-            delete window.recaptchaVerifier;
-        }
-    }, []);
+        setUsernameError('');
+        // Re-added reCAPTCHA reset
+        resetRecaptcha();
+    }, [resetRecaptcha]); // Re-added resetRecaptcha to dependencies
 
 
     return (
@@ -373,103 +383,153 @@ const AuthModal = ({ onClose }) => {
                     <div className="overflow-hidden w-full">
                         <div
                             className="flex transition-transform duration-500 ease-in-out"
-                            style={{ transform: `translateX(-${currentStep * 100}%)` }}
+                            style={{ transform: `translateX(-${isLogin ? 0 : currentStep * 100}%)` }}
                         >
-                            {/* Step 0: Email */}
-                            <div className="w-full flex-shrink-0 space-y-4 px-4">
-                                <div>
-                                    <label htmlFor="email" className="block text-gray-700 text-sm font-medium mb-2 text-left">Email</label>
-                                    <input
-                                        type="email"
-                                        id="email"
-                                        className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${emailError ? 'border-red-500' : 'border-gray-300'}`}
-                                        placeholder="your.email@example.com"
-                                        value={email}
-                                        onChange={(e) => { setEmail(e.target.value); setEmailError(''); }} // Clear error on change
-                                        // removed required attribute
-                                    />
-                                    {emailError && <p className="text-red-500 text-xs mt-1 text-left">{emailError}</p>}
-                                </div>
-                            </div>
-
-                            {/* Step 1: Password and Confirm Password */}
-                            <div className="w-full flex-shrink-0 space-y-4 px-4">
-                                <div>
-                                    <label htmlFor="password" className="block text-gray-700 text-sm font-medium mb-2 text-left">Password</label>
-                                    <input
-                                        type="password"
-                                        id="password"
-                                        className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${passwordError ? 'border-red-500' : 'border-gray-300'}`}
-                                        placeholder="********"
-                                        value={password}
-                                        onChange={(e) => { setPassword(e.target.value); setPasswordError(''); }} // Clear error on change
-                                        // removed required attribute
-                                    />
-                                    {passwordError && <p className="text-red-500 text-xs mt-1 text-left">{passwordError}</p>}
-                                </div>
-                                <div>
-                                    <label htmlFor="confirm-password" className="block text-gray-700 text-sm font-medium mb-2 text-left">Confirm Password</label>
-                                    <input
-                                        type="password"
-                                        id="confirm-password"
-                                        className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${confirmPasswordError ? 'border-red-500' : 'border-gray-300'}`}
-                                        placeholder="********"
-                                        value={confirmPassword}
-                                        onChange={(e) => { setConfirmPassword(e.target.value); setConfirmPasswordError(''); }} // Clear error on change
-                                        // removed required attribute
-                                    />
-                                    {confirmPasswordError && <p className="text-red-500 text-xs mt-1 text-left">{confirmPasswordError}</p>}
-                                </div>
-                            </div>
-
-                            {/* Step 2: Phone Number Input & OTP Verification */}
-                            <div className="w-full flex-shrink-0 space-y-4 px-4">
-                                {!verificationId ? (
-                                    <div className="relative">
-                                        <label htmlFor="phoneNumber" className="block text-gray-700 text-sm font-medium mb-2 text-left">Phone Number</label>
+                            {/* Sign In / Step 0: Email & Password (for login) */}
+                            {isLogin && (
+                                <div className="w-full flex-shrink-0 space-y-4 px-4">
+                                    <div>
+                                        <label htmlFor="email" className="block text-gray-700 text-sm font-medium mb-2 text-left">Email</label>
                                         <input
-                                            type="tel"
-                                            id="phoneNumber"
-                                            className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${phoneNumberError ? 'border-red-500' : 'border-gray-300'}`}
-                                            placeholder="e.g., +11234567890"
-                                            value={phoneNumber}
-                                            onChange={(e) => { setPhoneNumber(e.target.value); setPhoneNumberError(''); }} // Clear error on change
-                                            // removed required attribute
-                                            disabled={isSendingOtp}
+                                            type="email"
+                                            id="email"
+                                            className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${emailError ? 'border-red-500' : 'border-gray-300'}`}
+                                            placeholder="your.email@example.com"
+                                            value={email}
+                                            onChange={(e) => { setEmail(e.target.value); setEmailError(''); }}
                                         />
-                                        <p className="text-xs text-gray-500 mt-1 text-left">For human verification purposes only! Include country code (e.g., +1).</p>
-                                        <div id="recaptcha-container" className="mt-4"></div>
+                                        {emailError && <p className="text-red-500 text-xs mt-1 text-left">{emailError}</p>}
                                     </div>
-                                ) : (
-                                    <div className="relative">
-                                        <label htmlFor="otp" className="block text-gray-700 text-sm font-medium mb-2 text-left">Enter Verification Code</label>
+                                    <div>
+                                        <label htmlFor="password" className="block text-gray-700 text-sm font-medium mb-2 text-left">Password</label>
                                         <input
-                                            type="text"
-                                            id="otp"
-                                            className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${otpError ? 'border-red-500' : 'border-gray-300'}`}
-                                            placeholder="e.g., 123456"
-                                            value={otp}
-                                            onChange={(e) => { setOtp(e.target.value); setOtpError(''); }} // Clear error on change
-                                            // removed required attribute
-                                            disabled={isVerifyingOtp}
+                                            type="password"
+                                            id="password"
+                                            className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${passwordError ? 'border-red-500' : 'border-gray-300'}`}
+                                            placeholder="********"
+                                            value={password}
+                                            onChange={(e) => { setPassword(e.target.value); setPasswordError(''); }}
                                         />
-                                        {otpError && <p className="text-red-500 text-xs mt-1 text-left">{otpError}</p>}
-                                        <p className="text-xs text-gray-500 mt-1 text-left">Code sent to {phoneNumber}.</p>
-                                        <button
-                                            type="button"
-                                            onClick={handleSendOtp}
-                                            disabled={isSendingOtp || isVerifyingOtp}
-                                            className="w-full bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-full hover:bg-gray-400 transition duration-300 shadow-md hover:shadow-lg transform hover:scale-105 mt-2"
-                                        >
-                                            {isSendingOtp ? 'Sending...' : 'Resend Code'}
-                                        </button>
+                                        {passwordError && <p className="text-red-500 text-xs mt-1 text-left">{passwordError}</p>}
                                     </div>
-                                )}
-                            </div>
+                                </div>
+                            )}
+
+                            {/* Sign Up Steps (Carousel) */}
+                            {!isLogin && (
+                                <>
+                                    {/* Step 0: Email (for signup) */}
+                                    <div className="w-full flex-shrink-0 space-y-4 px-4">
+                                        <div>
+                                            <label htmlFor="email" className="block text-gray-700 text-sm font-medium mb-2 text-left">Email</label>
+                                            <input
+                                                type="email"
+                                                id="email"
+                                                className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${emailError ? 'border-red-500' : 'border-gray-300'}`}
+                                                placeholder="your.email@example.com"
+                                                value={email}
+                                                onChange={(e) => { setEmail(e.target.value); setEmailError(''); }}
+                                            />
+                                            {emailError && <p className="text-red-500 text-xs mt-1 text-left">{emailError}</p>}
+                                        </div>
+                                    </div>
+
+                                    {/* Step 1: Password and Confirm Password (for signup) */}
+                                    <div className="w-full flex-shrink-0 space-y-4 px-4">
+                                        <div>
+                                            <label htmlFor="password" className="block text-gray-700 text-sm font-medium mb-2 text-left">Password</label>
+                                            <input
+                                                type="password"
+                                                id="password"
+                                                className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${passwordError ? 'border-red-500' : 'border-gray-300'}`}
+                                                placeholder="********"
+                                                value={password}
+                                                onChange={(e) => { setPassword(e.target.value); setPasswordError(''); }}
+                                            />
+                                            {passwordError && <p className="text-red-500 text-xs mt-1 text-left">{passwordError}</p>}
+                                        </div>
+                                        <div>
+                                            <label htmlFor="confirm-password" className="block text-gray-700 text-sm font-medium mb-2 text-left">Confirm Password</label>
+                                            <input
+                                                type="password"
+                                                id="confirm-password"
+                                                className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${confirmPasswordError ? 'border-red-500' : 'border-gray-300'}`}
+                                                placeholder="********"
+                                                value={confirmPassword}
+                                                onChange={(e) => { setConfirmPassword(e.target.value); setConfirmPasswordError(''); }}
+                                            />
+                                            {confirmPasswordError && <p className="text-red-500 text-xs mt-1 text-left">{confirmPasswordError}</p>}
+                                        </div>
+                                    </div>
+
+                                    {/* Step 2: Phone Number Input & OTP Verification (for signup) */}
+                                    <div className="w-full flex-shrink-0 space-y-4 px-4">
+                                        {/* Username Input */}
+                                        <div>
+                                            <label htmlFor="username" className="block text-gray-700 text-sm font-medium mb-2 text-left">Username</label>
+                                            <input
+                                                type="text"
+                                                id="username"
+                                                className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${usernameError ? 'border-red-500' : 'border-gray-300'}`}
+                                                placeholder="Choose a username"
+                                                value={username}
+                                                onChange={(e) => { setUsername(e.target.value); setUsernameError(''); }}
+                                                disabled={isSendingOtp || verificationId}
+                                            />
+                                            {usernameError && <p className="text-red-500 text-xs mt-1 text-left">{usernameError}</p>}
+                                        </div>
+
+                                        {!verificationId ? (
+                                            <div className="relative">
+                                                <label htmlFor="phoneNumber" className="block text-gray-700 text-sm font-medium mb-2 text-left">Phone Number</label>
+                                                <input
+                                                    type="tel"
+                                                    id="phoneNumber"
+                                                    className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${phoneNumberError ? 'border-red-500' : 'border-gray-300'}`}
+                                                    placeholder="e.g., +11234567890"
+                                                    value={phoneNumber}
+                                                    onChange={(e) => { setPhoneNumber(e.target.value); setPhoneNumberError(''); }}
+                                                    disabled={isSendingOtp} // Removed reCAPTCHA disabled condition
+                                                />
+                                                <p className="text-xs text-gray-500 mt-1 text-left">For human verification purposes only! Include country code (e.g., +1).</p>
+                                                {/* Removed reCAPTCHA loading message */}
+                                                {/* {!isRecaptchaReadyForUse || !recaptchaVerifier && (
+                                                    <p className="text-sm text-gray-500 mt-2 text-center">Loading verification...</p>
+                                                )} */}
+                                                {/* Removed reCAPTCHA container div */}
+                                                {/* <div id="recaptcha-container" className="mt-4"></div> */}
+                                            </div>
+                                        ) : (
+                                            <div className="relative">
+                                                <label htmlFor="otp" className="block text-gray-700 text-sm font-medium mb-2 text-left">Enter Verification Code</label>
+                                                <input
+                                                    type="text"
+                                                    id="otp"
+                                                    className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${otpError ? 'border-red-500' : 'border-gray-300'}`}
+                                                    placeholder="e.g., 123456"
+                                                    value={otp}
+                                                    onChange={(e) => { setOtp(e.target.value); setOtpError(''); }}
+                                                    disabled={isVerifyingOtp}
+                                                />
+                                                {otpError && <p className="text-red-500 text-xs mt-1 text-left">{otpError}</p>}
+                                                <p className="text-xs text-gray-500 mt-1 text-left">Code sent to {phoneNumber}.</p>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSendOtp}
+                                                    disabled={isSendingOtp || isVerifyingOtp} // Removed reCAPTCHA disabled condition
+                                                    className="w-full bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-full hover:bg-gray-400 transition duration-300 shadow-md hover:shadow-lg transform hover:scale-105 mt-2"
+                                                >
+                                                    {isSendingOtp ? 'Sending...' : 'Resend Code'}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
 
-                    {/* Carousel Indicators */}
+                    {/* Carousel Indicators (only for signup) */}
                     {!isLogin && (
                         <div className="flex justify-center space-x-2 mt-4">
                             {[0, 1, 2].map((stepIdx) => (
@@ -509,7 +569,7 @@ const AuthModal = ({ onClose }) => {
                             }`}
                         disabled={
                             (isLogin && (isSendingOtp || isVerifyingOtp)) ||
-                            (!isLogin && currentStep === 2 && !verificationId && isSendingOtp) ||
+                            (!isLogin && currentStep === 2 && (isSendingOtp || verificationId)) || // Simplified disabled condition
                             (!isLogin && currentStep === 2 && verificationId && isVerifyingOtp)
                         }
                     >
@@ -520,7 +580,7 @@ const AuthModal = ({ onClose }) => {
                                 : currentStep === 1
                                     ? 'Next'
                                     : currentStep === 2 && !verificationId
-                                        ? (isSendingOtp ? 'Sending Code...' : 'Send Code')
+                                        ? (isSendingOtp ? 'Sending Code...' : 'Send Code') // Simplified button text
                                         : (isVerifyingOtp ? 'Verifying...' : 'Verify Code')
                         }
                     </button>

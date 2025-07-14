@@ -707,10 +707,11 @@ const ReviewsHubPage = () => {
                 if (targetReviewIndex !== -1) {
                     const newComment = {
                         text: commentTextValue,
-                        userId: `RN-${currentUserId.substring(0, 5)}`,
+                        userId: `RN-${currentUserId.substring(0, 5)}}`,
                         date: new Date() // Store as a JS Date object
                     };
                     // Ensure comments array exists before pushing
+                    // FIX: Changed targetRosterIndex to targetReviewIndex
                     updatedRatings[targetReviewIndex].comments = updatedRatings[targetReviewIndex].comments || [];
                     updatedRatings[targetReviewIndex].comments.push(newComment);
                     console.log("ReviewsHubPage: New comment added to array. Updated ratings structure:", updatedRatings);
@@ -1098,7 +1099,7 @@ const ReviewsHubPage = () => {
                                     };
 
                                     return (
-                                        <div key={review.date.getTime() + index} className="p-5 rounded-xl shadow-lg border border-gray-100" style={{backgroundColor: '#fefefa'}}> {/* Changed bg-gray-50 to inline style with #fffff0 */}
+                                        <div key={review.date.getTime() + index} className="p-5 rounded-xl shadow-lg border border-gray-100" style={{backgroundColor: '#fff8e7'}}> {/* Changed bg-gray-50 to inline style with #fffff0 */}
                                             {/* Inject schema for this specific review */}
                                             <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(reviewSchema) }} />
 

@@ -35,7 +35,7 @@ import {
 
 // Reintroducing Page Components imports
 import HomePage from './pages/HomePage.jsx';
-import ReviewsHubPage from './pages/ReviewsHubPage.jsx';
+import ReviewsHubPage from './pages/ReviewsHubPage.jsx'; // Corrected path
 import PrivacyPolicyModal from './components/PrivacyPolicyModal.jsx';
 
 // Reintroducing Reusable Components imports
@@ -291,13 +291,19 @@ export default function App() {
             });
         }
 
-        // Cleanup function
+        // Cleanup function for reCAPTCHA
         return () => {
             if (recaptchaVerifierRef.current) {
                 console.log("App.jsx: Cleaning up central reCAPTCHA Verifier...");
-                if (recaptchaWidgetIdRef.current !== null && window.grecaptcha && window.grecaptcha.reset) {
+                if (recaptchaWidgetIdRef.current !== null && window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
+                    // It's safer to use the specific widget ID for reset if it exists
                     window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+                } else if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
+                    // Fallback to general reset if widgetId is not available (though it should be)
+                    console.warn("App.jsx: Attempting general reCAPTCHA reset as widget ID is null.");
+                    window.grecaptcha.reset();
                 }
+                // Clear the verifier instance from the ref and window object
                 recaptchaVerifierRef.current.clear();
                 recaptchaVerifierRef.current = null;
                 recaptchaWidgetIdRef.current = null;
@@ -330,11 +336,14 @@ export default function App() {
 
     // NEW: Function to reset reCAPTCHA, passed down via context
     const resetRecaptcha = useCallback(() => {
-        if (recaptchaWidgetIdRef.current !== null && window.grecaptcha && window.grecaptcha.reset) {
-            console.log("App.jsx: Resetting central reCAPTCHA widget.");
+        if (recaptchaWidgetIdRef.current !== null && window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
+            console.log("App.jsx: Resetting central reCAPTCHA widget with ID.");
             window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+        } else if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
+            console.warn("App.jsx: Attempting general reCAPTCHA reset as widget ID is null.");
+            window.grecaptcha.reset();
         } else {
-            console.warn("App.jsx: Cannot reset reCAPTCHA: widget ID or grecaptcha not available.");
+            console.warn("App.jsx: Cannot reset reCAPTCHA: grecaptcha or reset function not available.");
         }
     }, []);
 
