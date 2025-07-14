@@ -4,15 +4,18 @@
  * This file contains callable Cloud Functions to securely handle:
  * 1. Adding new reviews to doctors.
  * 2. Adding comments to existing reviews.
+ * 3. Sending contact form emails with reCAPTCHA verification.
  *
- * All sensitive write operations are performed on the server-side
- * to ensure data integrity and enforce security rules.
+ * All sensitive write operations and external communications are performed
+ * on the server-side to ensure data integrity and enforce security rules.
  */
 
 // Import necessary Firebase modules
 const functions = require("firebase-functions");
 const admin = require("firebase-admin"); // Firebase Admin SDK
 const logger = require("firebase-functions/logger"); // For structured logging
+const nodemailer = require('nodemailer'); // For sending emails
+const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise'); // For reCAPTCHA Enterprise verification
 
 // Initialize Firebase Admin SDK
 // This allows your functions to interact with Firestore, Auth, etc.,
@@ -21,6 +24,21 @@ admin.initializeApp();
 
 // Get a reference to the Firestore database
 const db = admin.firestore();
+
+// Configure Nodemailer using environment variables
+// IMPORTANT: Set these variables using `firebase functions:config:set`
+// e.g., firebase functions:config:set mail.email="your_sending_email@gmail.com" mail.password="your_app_password"
+const mailTransport = nodemailer.createTransport({
+    service: 'gmail', // Use 'gmail' for Gmail, or specify other SMTP settings
+    auth: {
+        user: functions.config().mail.email, // Your sending email address
+        pass: functions.config().mail.password, // Your email app password
+    },
+});
+
+// Initialize reCAPTCHA Enterprise client
+const recaptchaClient = new RecaptchaEnterpriseServiceClient();
+
 
 // --- Constants and Utility Functions (Server-Side) ---
 // These are duplicated from the frontend but are essential for
@@ -144,8 +162,8 @@ exports.addReview = functions.https.onCall(async (data, context) => {
   const newReview = {
     userId: userId, // Store the UID of the user who left the review
     // Use original if valid, else filtered message
-    comment: filteredComment.message.isValid ? comment :
-            filteredComment.message,
+    comment: filteredComment.isValid ? comment :
+            filteredComment.message, // Corrected logic here
     stars: stars,
     date: new Date().toISOString(), // Store as ISO string
     comments: [], // Initialize with an empty comments array
@@ -257,8 +275,8 @@ exports.addCommentToReview = functions.https.onCall(async (data, context) => {
   const newComment = {
     userId: userId,
     // Use original if valid, else filtered message
-    text: filteredComment.message.isValid ? commentText :
-            filteredComment.message,
+    text: filteredComment.isValid ? commentText :
+            filteredComment.message, // Corrected logic here
     date: new Date().toISOString(),
   };
 
@@ -318,4 +336,94 @@ exports.addCommentToReview = functions.https.onCall(async (data, context) => {
         error.message,
     );
   }
+});
+
+/**
+ * Callable Cloud Function to send contact form emails.
+ * This function performs server-side reCAPTCHA verification and sends an email.
+ *
+ * @param {Object} data - The data sent from the client.
+ * @param {string} data.name - The sender's name.
+ * @param {string} data.email - The sender's email address.
+ * @param {string} data.subject - The email subject.
+ * @param {string} data.message - The email message body.
+ * @param {string} data.recaptchaToken - The reCAPTCHA token from the client.
+ * @param {Object} context - The Cloud Function context.
+ * @return {Object} A success or error message.
+ */
+exports.sendContactEmail = functions.https.onCall(async (data, context) => {
+    logger.info("sendContactEmail function called", {data});
+
+    const { name, email, subject, message, recaptchaToken } = data;
+
+    // Basic validation for form fields
+    if (!name || !email || !subject || !message || !recaptchaToken) {
+        logger.error("Invalid input for sendContactEmail: Missing required fields or reCAPTCHA token.");
+        throw new functions.https.HttpsError('invalid-argument', 'Missing required form fields or reCAPTCHA token.');
+    }
+
+    // 1. Verify reCAPTCHA token (CRUCIAL FOR SECURITY)
+    try {
+        // Ensure GCP Project ID and reCAPTCHA Site Key are configured
+        if (!functions.config().gcp || !functions.config().gcp.project_id || !functions.config().recaptcha || !functions.config().recaptcha.site_key) {
+            logger.error("Firebase Functions config missing GCP Project ID or reCAPTCHA Site Key.");
+            throw new functions.https.HttpsError('internal', 'Server configuration error: reCAPTCHA keys missing.');
+        }
+
+        const projectPath = recaptchaClient.projectPath(functions.config().gcp.project_id);
+        const request = {
+            assessment: {
+                event: {
+                    token: recaptchaToken,
+                    siteKey: functions.config().recaptcha.site_key, // Your frontend site key from Firebase config
+                },
+            },
+            parent: projectPath,
+        };
+
+        const [response] = await recaptchaClient.createAssessment(request);
+
+        if (!response.tokenProperties.valid) {
+            logger.warn('reCAPTCHA verification failed:', response.tokenProperties.invalidReason);
+            throw new functions.https.HttpsError('unauthenticated', 'reCAPTCHA verification failed. Invalid token.');
+        }
+
+        // For reCAPTCHA v3 or Enterprise, check the score and action
+        // Adjust the score threshold as per your needs (0.0 to 1.0)
+        // A score of 0.5 is a common starting point for suspicious activity.
+        if (response.riskAnalysis.score < 0.5) {
+            logger.warn('reCAPTCHA score too low:', response.riskAnalysis.score, 'for action:', response.tokenProperties.action);
+            throw new functions.https.HttpsError('unauthenticated', 'reCAPTCHA score too low. Likely a bot.');
+        }
+
+        logger.info('reCAPTCHA verification successful. Score:', response.riskAnalysis.score);
+
+    } catch (recaptchaError) {
+        logger.error('Error during reCAPTCHA verification on server:', recaptchaError);
+        throw new functions.https.HttpsError('internal', 'Server-side reCAPTCHA verification failed.', recaptchaError.message);
+    }
+
+    // 2. Send the email
+    const mailOptions = {
+        from: functions.config().mail.email, // Sender: Your configured sending email
+        to: 'rnteallc@gmail.com', // **THIS IS THE RECIPIENT EMAIL ADDRESS**
+        subject: `RNTea Contact Form: ${subject}`,
+        html: `
+            <p><strong>Name:</strong> ${name}</p>
+            <p><strong>Email:</strong> ${email}</p>
+            <p><strong>Subject:</strong> ${subject}</p>
+            <p><strong>Message:</strong> ${message}</p>
+            <br/>
+            <p>This message was sent from the RNTea contact form.</p>
+        `,
+    };
+
+    try {
+        await mailTransport.sendMail(mailOptions);
+        logger.info('Contact email sent successfully to rnteallc@gmail.com');
+        return { success: true, message: 'Your message has been sent successfully!' };
+    } catch (error) {
+        logger.error('Error sending contact email:', error);
+        throw new functions.https.HttpsError('internal', 'Failed to send message via email service.', error.message);
+    }
 });

@@ -1,27 +1,23 @@
 // src/App.jsx - Reintroducing core components for diagnosis
 
-import React, { useState, useEffect, useCallback, createContext, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, createContext, useMemo, useRef } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 
 // Firebase imports
 import { initializeApp } from 'firebase/app';
 import {
     getAuth,
-    // signInAnonymously, // Commented out to prevent automatic anonymous-sign-in
     signInWithCustomToken,
     onAuthStateChanged,
     signOut,
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
-    GoogleAuthProvider, // NEW: Import GoogleAuthProvider
-    signInWithPopup,    // NEW: Import signInWithPopup
-    OAuthProvider,      // Already present, but good to highlight its use for Apple
-    linkWithCredential, // Already present, but crucial for linking
-    reauthenticateWithCredential,
+    GoogleAuthProvider,
+    signInWithPopup,
+    OAuthProvider,
+    linkWithCredential,
     EmailAuthProvider,
-    updateEmail,
-    updatePassword,
-    sendPasswordResetEmail
+    RecaptchaVerifier // Explicitly import RecaptchaVerifier
 } from 'firebase/auth';
 import {
     getFirestore,
@@ -40,9 +36,7 @@ import {
 // Reintroducing Page Components imports
 import HomePage from './pages/HomePage.jsx';
 import ReviewsHubPage from './pages/ReviewsHubPage.jsx';
-// NEW: Import the PrivacyPolicyModal component
 import PrivacyPolicyModal from './components/PrivacyPolicyModal.jsx';
-
 
 // Reintroducing Reusable Components imports
 import MessageBox from './components/MessageBox.jsx';
@@ -55,9 +49,6 @@ export const FirebaseContext = createContext(null);
 // Access these safely.
 const canvasFirebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
 const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : null;
-
-// --- IMPORTANT: Configuration will now primarily come from Vite environment variables (import.meta.env). ---
-// --- The Canvas environment variables (__firebase_config) will be used as a fallback. ---
 
 
 // --- Error Boundary Component (for debugging purposes) ---
@@ -107,21 +98,21 @@ export default function App() {
     const [currentUserId, setCurrentUserId] = useState(null);
     const [authReady, setAuthReady] = useState(false);
     const [loadingFirebase, setLoadingFirebase] = useState(true);
-    // Reintroduced message and showAuthModal states
     const [message, setMessage] = useState({ text: '', type: '' });
     const [showAuthModal, setShowAuthModal] = useState(false);
-    // NEW: State for Privacy Policy Modal
     const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
-
-    // Reintroduced useLocation and useNavigate
     const location = useLocation();
     const navigate = useNavigate();
-    // Reintroduced mobile nav states
     const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
+    // NEW: Ref for centralized reCAPTCHA instance
+    const recaptchaVerifierRef = useRef(null);
+    const recaptchaWidgetIdRef = useRef(null);
+    // NEW: State to explicitly track if reCAPTCHA is ready for use
+    const [isRecaptchaReadyForUse, setIsRecaptchaReadyForUse] = useState(false);
 
-    // Reinstated full showMessage, as MessageBox is back
+
     const showMessage = useCallback((text, type) => {
         setMessage({ text, type });
         setTimeout(() => setMessage({ text: '', type: '' }), 5000);
@@ -140,7 +131,6 @@ export default function App() {
                 let configToUse = null;
                 let configSource = 'Unknown';
 
-                // Attempt to load from Vite environment variables first
                 const viteConfig = {
                     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
                     authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -151,26 +141,19 @@ export default function App() {
                     measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
                 };
 
-                // --- DEBUGGING LOGS FOR ENVIRONMENT VARIABLES ---
-                console.log("App.jsx DEBUG: Raw import.meta.env:", import.meta.env);
                 console.log("App.jsx DEBUG: Constructed viteConfig:", viteConfig);
-                // --- END DEBUGGING LOGS ---
 
-                // Check if Vite config is complete
                 if (viteConfig.apiKey && viteConfig.projectId && viteConfig.appId) {
                     configToUse = viteConfig;
                     configSource = 'Vite Environment Variables (import.meta.env)';
                 } else if (canvasFirebaseConfig && canvasFirebaseConfig.apiKey && canvasFirebaseConfig.projectId && canvasFirebaseConfig.appId) {
-                    // Fallback to Canvas environment config if Vite config is incomplete
                     console.warn("App.jsx: Vite environment variables are incomplete. Falling back to Canvas environment config.");
                     configToUse = canvasFirebaseConfig;
                     configSource = 'Canvas Environment (__firebase_config)';
                 } else {
-                    // If neither is complete, throw an error
                     throw new Error("Firebase configuration is incomplete or missing from both Vite environment variables and Canvas setup. Please ensure either .env file is correct or Canvas variables are provided.");
                 }
 
-                // Log the source and masked config for debugging
                 console.log(`App.jsx: Firebase config source: ${configSource}`);
                 console.log("App.jsx: Firebase config being used (sensitive parts masked):", {
                     apiKey: configToUse?.apiKey ? '********' : 'N/A',
@@ -182,7 +165,6 @@ export default function App() {
                     measurementId: configToUse?.measurementId
                 });
 
-                // Validate that essential config values are present (redundant, but good final check)
                 if (!configToUse || !configToUse.apiKey || !configToUse.projectId || !configToUse.appId) {
                     throw new Error(`Firebase configuration is incomplete from ${configSource}. Missing apiKey, projectId, or appId. This should not happen if previous checks passed.`);
                 }
@@ -218,11 +200,11 @@ export default function App() {
                             } catch (error) {
                                 console.error("App.jsx: Error during custom token authentication:", error);
                                 showMessage(`Authentication failed: ${error.message}`, 'error');
-                                setCurrentUserId(null); // Ensure no user ID if sign-in fails
+                                setCurrentUserId(null);
                             }
                         } else {
                             console.log("App.jsx: No custom token found. User remains signed out by default.");
-                            setCurrentUserId(null); // Ensure no user is signed in automatically
+                            setCurrentUserId(null);
                         }
                     }
                     setAuthReady(true);
@@ -243,11 +225,122 @@ export default function App() {
         };
 
         initializeFirebase();
-    }, [location.pathname, canvasFirebaseConfig, showMessage]); // Dependencies remain the same
+    }, [location.pathname, canvasFirebaseConfig, showMessage]);
+
+
+    // NEW: Centralized reCAPTCHA initialization
+    useEffect(() => {
+        // Only initialize reCAPTCHA if Firebase Auth is ready AND it hasn't been initialized yet
+        if (auth && !recaptchaVerifierRef.current) {
+            console.log("App.jsx: Attempting to initialize centralized reCAPTCHA...");
+
+            // Ensure grecaptcha is available and ready
+            if (!window.grecaptcha || !window.grecaptcha.ready) {
+                console.log("App.jsx: grecaptcha not ready yet. Waiting...");
+                return;
+            }
+
+            window.grecaptcha.ready(() => {
+                // Double-check inside ready callback to prevent re-initialization
+                if (recaptchaVerifierRef.current) {
+                    console.log("App.jsx: RecaptchaVerifier already exists, skipping re-initialization.");
+                    setIsRecaptchaReadyForUse(true); // Ensure state is true if already initialized
+                    return;
+                }
+
+                console.log("App.jsx: grecaptcha is ready. Initializing RecaptchaVerifier...");
+                try {
+                    const container = document.getElementById('recaptcha-container-app');
+                    if (!container) {
+                        console.error("App.jsx: Central reCAPTCHA container 'recaptcha-container-app' not found!");
+                        showMessage('reCAPTCHA container missing from App.jsx. Verification may fail.', 'error');
+                        return;
+                    }
+
+                    const verifier = new RecaptchaVerifier(auth, 'recaptcha-container-app', {
+                        'size': 'invisible',
+                        'callback': (response) => {
+                            console.log("App.jsx: Central reCAPTCHA callback fired:", response);
+                        },
+                        'expired-callback': () => {
+                            console.log("App.jsx: Central reCAPTCHA expired.");
+                            showMessage('Verification expired. Please try again.', 'error');
+                            if (recaptchaWidgetIdRef.current !== null) {
+                                window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+                            }
+                        }
+                    });
+
+                    verifier.render().then((widgetId) => {
+                        console.log("App.jsx: Central reCAPTCHA rendered with widget ID:", widgetId);
+                        recaptchaWidgetIdRef.current = widgetId;
+                        recaptchaVerifierRef.current = verifier; // Set the ref with the rendered instance
+                        window.recaptchaVerifier = verifier; // Explicitly set window.recaptchaVerifier
+                        setIsRecaptchaReadyForUse(true); // Mark as ready for use
+                        console.log("App.jsx: recaptchaVerifierRef.current set and isRecaptchaReadyForUse true.");
+                    }).catch(error => {
+                        console.error("App.jsx: Error rendering central reCAPTCHA:", error);
+                        showMessage('Failed to load verification. Please refresh.', 'error');
+                        setIsRecaptchaReadyForUse(false); // Mark as not ready on error
+                    });
+                } catch (error) {
+                    console.error("App.jsx: Error creating central RecaptchaVerifier instance:", error);
+                    showMessage('Failed to initialize verification. Check console.', 'error');
+                    setIsRecaptchaReadyForUse(false); // Mark as not ready on error
+                }
+            });
+        }
+
+        // Cleanup function
+        return () => {
+            if (recaptchaVerifierRef.current) {
+                console.log("App.jsx: Cleaning up central reCAPTCHA Verifier...");
+                if (recaptchaWidgetIdRef.current !== null && window.grecaptcha && window.grecaptcha.reset) {
+                    window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+                }
+                recaptchaVerifierRef.current.clear();
+                recaptchaVerifierRef.current = null;
+                recaptchaWidgetIdRef.current = null;
+                setIsRecaptchaReadyForUse(false); // Reset readiness on cleanup
+                if (window.recaptchaVerifier) {
+                    delete window.recaptchaVerifier;
+                }
+            }
+        };
+    }, [auth, showMessage]); // Removed isRecaptchaReadyForUse from dependencies to prevent re-renders
+
+
+    // NEW: Function to execute reCAPTCHA, passed down via context
+    const executeRecaptcha = useCallback(async () => {
+        if (!isRecaptchaReadyForUse || !recaptchaVerifierRef.current || typeof recaptchaVerifierRef.current.execute !== 'function') {
+            console.error("App.jsx: reCAPTCHA Verifier not ready for execution. isReady:", isRecaptchaReadyForUse, "instance:", recaptchaVerifierRef.current);
+            showMessage('Verification not ready. Please try again.', 'error');
+            throw new Error('reCAPTCHA not ready.');
+        }
+        try {
+            const token = await recaptchaVerifierRef.current.execute();
+            console.log("App.jsx: reCAPTCHA token obtained:", token);
+            return token;
+        } catch (error) {
+            console.error("App.jsx: Error executing reCAPTCHA:", error);
+            showMessage(`Verification failed: ${error.message}`, 'error');
+            throw error; // Re-throw to allow calling component to handle
+        }
+    }, [showMessage, isRecaptchaReadyForUse]); // Added isRecaptchaReadyForUse to dependencies
+
+    // NEW: Function to reset reCAPTCHA, passed down via context
+    const resetRecaptcha = useCallback(() => {
+        if (recaptchaWidgetIdRef.current !== null && window.grecaptcha && window.grecaptcha.reset) {
+            console.log("App.jsx: Resetting central reCAPTCHA widget.");
+            window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+        } else {
+            console.warn("App.jsx: Cannot reset reCAPTCHA: widget ID or grecaptcha not available.");
+        }
+    }, []);
+
 
     // --- Authentication Functions (passed via Context) ---
 
-    // Function to sign up with email and password
     const signUpWithEmailPassword = useCallback(async (email, password) => {
         if (!auth) {
             showMessage('Firebase Auth not initialized.', 'error');
@@ -261,12 +354,10 @@ export default function App() {
         } catch (error) {
             console.error("Error signing up with email/password:", error);
             showMessage(`Sign Up Failed: ${error.message}`, 'error');
-            // IMPORTANT: Re-throw the error so AuthModal can catch it specifically
             throw error;
         }
     }, [auth, showMessage]);
 
-    // Function to sign in with email and password
     const signInWithEmailPassword = useCallback(async (email, password) => {
         if (!auth) {
             showMessage('Firebase Auth not initialized.', 'error');
@@ -284,7 +375,6 @@ export default function App() {
         }
     }, [auth, showMessage]);
 
-    // NEW: Function to sign in or link with Google
     const signInWithGoogle = useCallback(async () => {
         if (!auth) {
             showMessage('Firebase Auth not initialized.', 'error');
@@ -295,11 +385,9 @@ export default function App() {
             let userCredential;
 
             if (auth.currentUser && auth.currentUser.isAnonymous) {
-                // If the current user is anonymous, try to link with Google
                 userCredential = await linkWithCredential(auth.currentUser, await signInWithPopup(auth, provider).then(result => result.credential));
                 showMessage('Anonymous account linked with Google!', 'success');
             } else {
-                // Otherwise, perform a regular sign-in with popup
                 userCredential = await signInWithPopup(auth, provider);
                 showMessage('Signed in with Google successfully!', 'success');
             }
@@ -307,7 +395,6 @@ export default function App() {
             return userCredential.user;
         } catch (error) {
             console.error("Error signing in with Google:", error);
-            // Handle specific errors like 'auth/account-exists-with-different-credential'
             if (error.code === 'auth/account-exists-with-different-credential') {
                 showMessage('An account with this email already exists using a different sign-in method. Please sign in with your original method or link accounts in your profile.', 'error');
             } else {
@@ -317,8 +404,6 @@ export default function App() {
         }
     }, [auth, showMessage, setShowAuthModal]);
 
-
-    // Function to sign in with Apple (modified to include linking logic)
     const signInWithApple = useCallback(async () => {
         if (!auth) {
             showMessage('Firebase Auth not initialized.', 'error');
@@ -326,18 +411,12 @@ export default function App() {
         }
         try {
             const provider = new OAuthProvider('apple.com');
-            // Apple requires additional configuration (Service ID, Key ID, Team ID) in Firebase Console.
-            // You might also need to set a nonce for security in more complex scenarios or when not using web SDK.
-            // For simple web SDK, Firebase handles much of this.
-
             let userCredential;
 
             if (auth.currentUser && auth.currentUser.isAnonymous) {
-                // If the current user is anonymous, try to link with Apple
                 userCredential = await linkWithCredential(auth.currentUser, await signInWithPopup(auth, provider).then(result => result.credential));
                 showMessage('Anonymous account linked with Apple!', 'success');
             } else {
-                // Otherwise, perform a regular sign-in with Apple
                 userCredential = await signInWithPopup(auth, provider);
                 showMessage('Signed in with Apple successfully!', 'success');
             }
@@ -354,7 +433,6 @@ export default function App() {
         }
     }, [auth, showMessage]);
 
-    // Function to sign out the current user
     const signOutUser = useCallback(async () => {
         if (!auth) {
             showMessage('Firebase Auth not initialized.', 'error');
@@ -364,14 +442,12 @@ export default function App() {
             await signOut(auth);
             setCurrentUserId(null);
             showMessage('Signed out successfully!', 'success');
-            // Do NOT automatically sign in anonymously after sign out
         } catch (error) {
             console.error("Error signing out:", error);
             showMessage(`Sign Out Failed: ${error.message}`, 'error');
         }
     }, [auth, showMessage]);
 
-    // Function to link anonymous account with email and password
     const linkAnonymousWithEmailPassword = useCallback(async (email, password) => {
         if (!auth || !auth.currentUser || !auth.currentUser.isAnonymous) {
             showMessage('Not an anonymous user or Firebase Auth not ready.', 'error');
@@ -390,7 +466,6 @@ export default function App() {
         }
     }, [auth, showMessage]);
 
-    // Function to link anonymous account with Apple
     const linkAnonymousWithApple = useCallback(async () => {
         if (!auth || !auth.currentUser || !auth.currentUser.isAnonymous) {
             showMessage('Not an anonymous user or Firebase Auth not ready.', 'error');
@@ -416,10 +491,8 @@ export default function App() {
         auth,
         currentUserId,
         authReady,
-        // Use canvasAppId if available, fallback to projectId from Vite environment variables
         appId: canvasAppId || import.meta.env.VITE_FIREBASE_PROJECT_ID,
-        showMessage, // Pass showMessage function
-        // Reintroduced auth functions
+        showMessage,
         signUpWithEmailPassword,
         signInWithEmailPassword,
         signInWithGoogle,
@@ -427,15 +500,20 @@ export default function App() {
         signOutUser,
         linkAnonymousWithEmailPassword,
         linkAnonymousWithApple,
-        setShowAuthModal
+        setShowAuthModal,
+        // NEW: Add centralized reCAPTCHA functions to context
+        executeRecaptcha,
+        resetRecaptcha,
+        // NEW: Expose the reCAPTCHA readiness state
+        isRecaptchaReadyForUse,
     }), [
         firebaseAppInstance, db, auth, currentUserId, authReady, canvasAppId, showMessage,
         signUpWithEmailPassword, signInWithEmailPassword, signInWithGoogle, signInWithApple, signOutUser,
-        linkAnonymousWithEmailPassword, linkAnonymousWithApple, setShowAuthModal
+        linkAnonymousWithEmailPassword, linkAnonymousWithApple, setShowAuthModal,
+        executeRecaptcha, resetRecaptcha, isRecaptchaReadyForUse // Include readiness state in dependencies
     ]);
 
 
-    // Reintroducing Mobile Navigation Handlers
     const handleMobileNavToggle = useCallback(() => {
         setIsMobileNavOpen(prev => !prev);
         document.body.style.overflow = !isMobileNavOpen ? 'hidden' : '';
@@ -459,7 +537,6 @@ export default function App() {
 
     return (
         <div className="min-h-screen flex flex-col">
-            {/* Reintroduced full header */}
             <header className="bg-white shadow-sm py-8 px-6 md:px-10 lg:px-16 flex justify-between items-center rounded-b-lg fixed top-0 w-full z-30">
                 <Link to="/" className="text-3xl font-bold text-gray-800 rntea-brand">RNTea</Link>
                 <nav className="hidden md:block">
@@ -498,7 +575,7 @@ export default function App() {
                             </Link>
                         </li>
                         <li>
-                            {currentUserId ? ( // Check if currentUserId exists (user is signed in)
+                            {currentUserId ? (
                                 <button
                                     onClick={signOutUser}
                                     className="bg-[#CC5500] text-white font-bold py-2 px-4 rounded-full hover:bg-[#A84500] transition duration-300 shadow-md btn-hover-scale"
@@ -527,7 +604,6 @@ export default function App() {
                 </div>
             </header>
 
-            {/* Reintroduced mobile nav overlay */}
             <div
                 className={`mobile-nav-overlay md:hidden fixed top-0 left-0 w-full h-full bg-white bg-opacity-98 z-40 flex flex-col justify-center items-center transition-transform duration-400 ease-in-out ${isMobileNavOpen ? 'open' : ''}`}
                 id="mobile-nav-overlay"
@@ -573,7 +649,7 @@ export default function App() {
                         <span className="absolute left-0 bottom-0 h-0.5 bg-[#CC5500] w-0 transition-all duration-300 group-hover:w-full"></span>
                     </span>
                 </Link>
-                {currentUserId ? ( // Check if currentUserId exists (user is signed in)
+                {currentUserId ? (
                     <button
                         onClick={() => { signOutUser(); handleMobileNavLinkClick(); }}
                         className="bg-[#CC5500] text-white font-bold py-2 px-4 rounded-full hover:bg-[#A84500] transition duration-300 shadow-md btn-hover-scale"
@@ -592,38 +668,34 @@ export default function App() {
 
 
             <main className="flex-grow w-full flex flex-col mt-[120px]">
-                {/* Reintroduced MessageBox */}
                 <MessageBox message={message.text} type={message.type} />
+
+                {/* NEW: Hidden div for centralized reCAPTCHA to attach to */}
+                <div id="recaptcha-container-app" className="hidden"></div>
 
                 <ErrorBoundary>
                     {loadingFirebase ? (
                         <p className="text-center text-gray-500 py-8">App.jsx: Initializing application and Firebase...</p>
                     ) : (
                         <FirebaseContext.Provider value={firebaseContextValue}>
-                            {/* Reintroduced Routes for HomePage and ReviewsHubPage */}
                             <Routes>
                                 {console.log(`App.jsx: Route matched for path: ${location.pathname}`)}
                                 <Route path="/" element={<HomePage />} />
                                 <Route path="/reviews" element={<ReviewsHubPage />} />
-                                {/* Keeping test route for now, can remove later */}
                                 <Route path="/test-route" element={<h2 className="text-center text-2xl text-center mt-8">This is a Test Route.</h2>} />
                             </Routes>
-                            {/* Reintroduced AuthModal conditionally */}
                             {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
                         </FirebaseContext.Provider>
                     )}
                 </ErrorBoundary>
             </main>
-            {/* Simplified Footer Section */}
             <footer className="bg-white py-4 px-6 md:px-10 lg:px-16 border-t border-gray-200 text-center text-gray-600">
                 <p className="text-sm">
                     &copy; {new Date().getFullYear()} RNTea business. All Rights Reserved.
-                    {/* Changed to button to open modal */}
                     <button onClick={() => setShowPrivacyModal(true)} className="ml-1 text-blue-600 hover:underline focus:outline-none">Privacy Policy</button>
                 </p>
             </footer>
 
-            {/* NEW: Conditionally render the Privacy Policy Modal */}
             {showPrivacyModal && <PrivacyPolicyModal onClose={() => setShowPrivacyModal(false)} />}
         </div>
     );

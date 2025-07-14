@@ -13,6 +13,8 @@ const HomePage = () => {
     const [contactEmail, setContactEmail] = useState('');
     const [contactSubject, setContactSubject] = useState('');
     const [contactMessage, setContactMessage] = useState('');
+    // NEW: State for honeypot field
+    const [honeypot, setHoneypot] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
 
@@ -67,6 +69,14 @@ const HomePage = () => {
         e.preventDefault();
         setIsSubmitting(true);
 
+        // NEW: Honeypot check - if this field is filled, it's likely a bot
+        if (honeypot) {
+            console.warn("Honeypot field filled. Likely a bot submission. Discarding.");
+            showMessage('Thank you for your message!', 'success'); // Show success to bot, but don't process
+            setIsSubmitting(false);
+            return;
+        }
+
         if (!contactName.trim() || !contactEmail.trim() || !contactSubject.trim() || !contactMessage.trim()) {
             showMessage('Please fill in all required fields.', 'error');
             setIsSubmitting(false);
@@ -74,20 +84,6 @@ const HomePage = () => {
         }
 
         try {
-            // Firebase Cloud Function endpoint URL
-            // Replace 'YOUR_REGION' with your Firebase function's region (e.g., 'us-central1')
-            // And 'YOUR_PROJECT_ID' with your Firebase project ID
-            // You can find the callable function URL in your Firebase console under Functions -> sendContactEmail
-            // For local testing, it might be http://localhost:5001/YOUR_PROJECT_ID/YOUR_REGION/sendContactEmail
-            // For deployed functions, it will be https://YOUR_REGION-YOUR_PROJECT_ID.cloudfunctions.net/sendContactEmail
-            // Using the callable function format for simplicity with Firebase SDK, but direct fetch is also possible.
-
-            // Construct the URL for the callable function
-            // Note: For deployed functions, Firebase SDK handles the URL.
-            // For direct fetch, you'd need the full URL.
-            // Since we're in a React app, we can use the callable function approach if Firebase SDK is available for functions.
-            // However, for simplicity and direct fetch, let's assume a generic callable endpoint.
-            // A placeholder URL is used. You MUST replace this with your actual deployed function URL.
             const functionsBaseUrl = `https://${appId}.cloudfunctions.net`; // Example base URL, adjust as needed
             const functionUrl = `${functionsBaseUrl}/sendContactEmail`; // Assuming function name is sendContactEmail
 
@@ -115,6 +111,7 @@ const HomePage = () => {
                 setContactEmail('');
                 setContactSubject('');
                 setContactMessage('');
+                setHoneypot(''); // Clear honeypot as well
             } else {
                 const errorMessage = result.data?.message || 'Failed to send message. Please try again.';
                 showMessage(`Error: ${errorMessage}`, 'error');
@@ -125,7 +122,7 @@ const HomePage = () => {
         } finally {
             setIsSubmitting(false);
         }
-    }, [contactName, contactEmail, contactSubject, contactMessage, showMessage, appId]);
+    }, [contactName, contactEmail, contactSubject, contactMessage, honeypot, showMessage, appId]);
 
 
     return (
@@ -208,11 +205,18 @@ const HomePage = () => {
                                     <label htmlFor="your-message" className="block text-gray-700 text-sm font-medium mb-2">Your Message <span className="text-gray-500">(optional)</span></label>
                                     <textarea id="your-message" rows="5" className="shadow-sm appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent" placeholder="Share your experience... (optional)" value={contactMessage} onChange={(e) => setContactMessage(e.target.value)} required></textarea>
                                 </div>
-                                {/* ReCAPTCHA placeholder (for demonstration) */}
-                                <div className="mb-6 bg-gray-200 p-4 rounded text-center text-gray-600 text-sm">
-                                    [ReCAPTCHA Placeholder]
-                                    <p className="text-xs mt-2">ERROR for site owner: Invalid domain for site key</p>
-                                    <p className="text-xs">reCAPTCHA Privacy - Terms</p>
+                                {/* NEW: Honeypot field - hidden from human users */}
+                                <div style={{ display: 'none' }}>
+                                    <label htmlFor="honeypot-field">Leave this field blank</label>
+                                    <input
+                                        type="text"
+                                        id="honeypot-field"
+                                        name="honeypot"
+                                        value={honeypot}
+                                        onChange={(e) => setHoneypot(e.target.value)}
+                                        tabIndex="-1" // Make it not focusable by keyboard
+                                        autoComplete="off" // Prevent browser autofill
+                                    />
                                 </div>
                                 <button type="submit" className="bg-[#FFDEB5] hover:bg-custom-beige text-gray-800 font-bold py-3 px-6 rounded-md w-full transition duration-300 ease-in-out" disabled={isSubmitting}>
                                     {isSubmitting ? 'Sending...' : 'Send Message'}
