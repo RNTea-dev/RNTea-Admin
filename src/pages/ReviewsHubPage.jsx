@@ -1234,7 +1234,7 @@ const ReviewsHubPage = () => {
                                                             onChange={(e) => setCommentText(prev => ({ ...prev, [review.date.getTime()]: e.target.value }))}
                                                         />
                                                         <button
-                                                            className="submit-comment-btn bg-blue-600 text-white px-4 py-2 rounded-r-md hover:bg-blue-700 transition duration-200 btn-hover-scale"
+                                                            className="submit-comment-btn bg-custom-beige text-gray-800 px-4 py-2 rounded-r-md hover:opacity-90 transition duration-200 btn-hover-scale"
                                                             onClick={() => {
                                                                 const valueToPost = commentText[review.date.getTime()];
                                                                 handleAddCommentToReview(review.date.getTime(), valueToPost);

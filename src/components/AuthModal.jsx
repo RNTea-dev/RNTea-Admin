@@ -85,12 +85,10 @@ const AuthModal = ({ onClose }) => {
         }
     }, [auth]);
 
-    // Removed reCAPTCHA readiness useEffect
-    /*
+    // Re-added reCAPTCHA readiness useEffect
     useEffect(() => {
         console.log("AuthModal: isRecaptchaReadyForUse state:", isRecaptchaReadyForUse);
     }, [isRecaptchaReadyForUse]);
-    */
 
 
     const handleSendOtp = useCallback(async () => {
@@ -125,7 +123,7 @@ const AuthModal = ({ onClose }) => {
         try {
             // No actual reCAPTCHA execution, but executeRecaptcha is called to satisfy dependencies
             const recaptchaToken = await executeRecaptcha();
-            console.log("AuthModal: reCAPTCHA token obtained (dummy):", recaptchaToken);
+            console.log("AuthModal: reCAPTCHA token obtained:", recaptchaToken);
 
             // Pass the recaptchaVerifier instance (even if it's a dummy)
             const confirmation = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
@@ -489,15 +487,15 @@ const AuthModal = ({ onClose }) => {
                                                     placeholder="e.g., +11234567890"
                                                     value={phoneNumber}
                                                     onChange={(e) => { setPhoneNumber(e.target.value); setPhoneNumberError(''); }}
-                                                    disabled={isSendingOtp} // Removed reCAPTCHA disabled condition
+                                                    disabled={isSendingOtp || !isRecaptchaReadyForUse || !recaptchaVerifier} // Re-added reCAPTCHA disabled condition
                                                 />
                                                 <p className="text-xs text-gray-500 mt-1 text-left">For human verification purposes only! Include country code (e.g., +1).</p>
-                                                {/* Removed reCAPTCHA loading message */}
-                                                {/* {!isRecaptchaReadyForUse || !recaptchaVerifier && (
+                                                {/* Re-added reCAPTCHA loading message */}
+                                                {!isRecaptchaReadyForUse || !recaptchaVerifier && (
                                                     <p className="text-sm text-gray-500 mt-2 text-center">Loading verification...</p>
-                                                )} */}
-                                                {/* Removed reCAPTCHA container div */}
-                                                {/* <div id="recaptcha-container" className="mt-4"></div> */}
+                                                )}
+                                                {/* Re-added reCAPTCHA container div */}
+                                                <div id="recaptcha-container" className="mt-4"></div>
                                             </div>
                                         ) : (
                                             <div className="relative">
@@ -516,7 +514,7 @@ const AuthModal = ({ onClose }) => {
                                                 <button
                                                     type="button"
                                                     onClick={handleSendOtp}
-                                                    disabled={isSendingOtp || isVerifyingOtp} // Removed reCAPTCHA disabled condition
+                                                    disabled={isSendingOtp || isVerifyingOtp || !isRecaptchaReadyForUse || !recaptchaVerifier} // Re-added reCAPTCHA disabled condition
                                                     className="w-full bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-full hover:bg-gray-400 transition duration-300 shadow-md hover:shadow-lg transform hover:scale-105 mt-2"
                                                 >
                                                     {isSendingOtp ? 'Sending...' : 'Resend Code'}
@@ -569,7 +567,7 @@ const AuthModal = ({ onClose }) => {
                             }`}
                         disabled={
                             (isLogin && (isSendingOtp || isVerifyingOtp)) ||
-                            (!isLogin && currentStep === 2 && (isSendingOtp || verificationId)) || // Simplified disabled condition
+                            (!isLogin && currentStep === 2 && (!isRecaptchaReadyForUse || !recaptchaVerifier || isSendingOtp || verificationId)) || // Adjusted disabled condition for Send Code button
                             (!isLogin && currentStep === 2 && verificationId && isVerifyingOtp)
                         }
                     >
