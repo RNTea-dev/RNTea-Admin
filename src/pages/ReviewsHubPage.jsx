@@ -198,8 +198,8 @@ const ReviewsHubPage = () => {
     const [showSuggestions, setShowSuggestions] = useState(false); // NEW: State to control suggestion visibility
 
     const [showReviewSubmissionSection, setShowReviewSubmissionSection] = useState(false);
-    const [showCommentInput, setShowCommentInput] = useState({});
-    const [commentText, setCommentText] = useState({}); // State to hold comment text for each review
+    const [showCommentInput, setShowCommentInput] = useState({}); // Corrected initialization
+    const [commentText, setCommentText] = useState({}); // Corrected initialization
 
     // NEW STATES for Add Hospital/Doctor forms
     const [showAddHospitalForm, setShowAddHospitalForm] = useState(false);
@@ -934,6 +934,9 @@ const ReviewsHubPage = () => {
                                 <>or <span className="text-[#CC5500]">Add Doctor</span></>
                             )}
                         </button>
+                        {showAddDoctorForm && (!currentUserId || currentUserIsAnonymous) && ( // Message if form is open but user is not logged in
+                            <p className="text-red-600 mt-2 text-center">Please log in or sign up to add a doctor.</p>
+                        )}
                         {showAddDoctorForm && currentUserId && !currentUserIsAnonymous && ( // Only show form if logged in and not anonymous
                             <form ref={addDoctorFormRef} onSubmit={handleAddDoctorByUser} className="space-y-4 mt-4 p-4 border border-gray-200 rounded-md bg-gray-50">
                                 <input
@@ -956,9 +959,6 @@ const ReviewsHubPage = () => {
                                 <button type="button" onClick={() => setShowAddDoctorForm(false)} className="w-full bg-gray-400 text-white py-2 px-4 rounded-md hover:bg-gray-500 transition-colors mt-2">Cancel</button>
                             </form>
                         )}
-                        {showAddDoctorForm && (!currentUserId || currentUserIsAnonymous) && ( // Message if form is open but user is not logged in
-                            <p className="text-red-600 mt-2 text-center">Please log in or sign up to add a doctor.</p>
-                        )}
                     </div>
 
                     <div className="mb-4">
@@ -970,7 +970,7 @@ const ReviewsHubPage = () => {
                                 <button
                                     key={doctor.id}
                                     data-doctor-name={doctor.name}
-                                    className="bg-gray-100 text-gray-800 px-4 py-2 rounded-full hover:bg-custom-beige hover:text-gray-800 transition duration-200 btn-hover-scale"
+                                    className="bg-gray-100 text-gray-800 px-4 py-2 rounded-full hover:bg-[#CC5500] hover:text-white transition duration-200 btn-hover-scale"
                                     onClick={() => handleDoctorSelect(doctor)}
                                 >
                                     {`${doctor.name} (${doctor.specialty || 'N/A'}) - Avg. ${doctor.averageRating.toFixed(1)} ★ (${doctor.numReviews})`}
@@ -981,79 +981,85 @@ const ReviewsHubPage = () => {
                 </section>
 
                 {/* Main content grid for larger screens (Reviews & Write Review) */}
-                <div id="reviews-content-grid" className={`grid grid-cols-1 lg:grid-cols-3 gap-8 ${selectedDoctor ? '' : 'hidden'}`}>
+                {/* Changed to grid-cols-1 to make sections stack and take full width */}
+                <div id="reviews-content-grid" className={`grid grid-cols-1 gap-8 ${selectedDoctor ? '' : 'hidden'}`}>
                     {/* Left Column: Review Submission Section */}
-                    <section
-                        id="review-submission-section"
-                        ref={reviewSubmissionSectionRef}
-                        className={`lg:col-span-1 bg-white p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted ${showReviewSubmissionSection || window.innerWidth >= 1024 ? '' : 'hidden'}`}
-                    >
-                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Write a Review for <span id="display-selected-doctor-submission" className="text-[#CC5500]">{selectedDoctor?.name}</span></h2>
-                        {/* Star Rating */}
-                        <div className="mb-4">
-                            <label htmlFor="review-stars" className="block text-gray-700 text-sm font-medium mb-2">Rating</label>
-                            <StarRating rating={reviewRating} onRatingChange={setReviewRating} />
-                        </div>
-                        {/* Nursing Field Search Bar with Suggestions */}
-                        <div className="mb-4 relative"> {/* relative for absolute positioning of suggestions */}
-                            <label htmlFor="nursing-field-input" className="block text-gray-700 text-sm font-medium mb-2">
-                                Which field of Nursing are you?
-                            </label>
-                            <input
-                                type="text"
-                                id="nursing-field-input"
-                                className="w-full p-3 border border-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-custom-beige"
-                                placeholder="Start typing your nursing field..."
-                                value={searchQuery}
-                                onChange={handleSearchInputChange}
-                                onFocus={() => setShowSuggestions(true)}
-                                onBlur={() => setTimeout(() => setShowSuggestions(false), 100)} // Delay to allow click on suggestion
-                            />
-                            {showSuggestions && filteredNursingFields.length > 0 && (
-                                <ul className="absolute z-10 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto mt-1">
-                                    {filteredNursingFields.map((field, index) => (
-                                        <li
-                                            key={index}
-                                            className="p-3 hover:bg-gray-100 cursor-pointer text-gray-800"
-                                            onClick={() => handleSuggestionClick(field)}
-                                        >
-                                            {field}
-                                        </li>
-                                    ))}
-                                </ul>
-                            )}
-                        </div>
-                        <textarea
-                            id="review-text"
-                            className="w-full p-3 border border-gray-300 rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-custom-beige"
-                            rows="6"
-                            placeholder="Share your experience or review here..."
-                            value={reviewText}
-                            onChange={(e) => setReviewText(e.target.value)}
-                            maxLength={MAX_CHAR_LIMIT}
-                        ></textarea>
-                        {/* Submit Review Button - Always visible, but triggers login if not authenticated */}
-                        <button
-                            id="submit-review-btn"
-                            className="bg-custom-beige text-gray-800 font-bold py-3 px-6 rounded-full hover:opacity-90 transition duration-300 shadow-md w-full btn-hover-scale"
-                            onClick={handleSubmitReview}
+                    {(currentUserId && !currentUserIsAnonymous) && ( // Conditionally render if user is signed in
+                        <section
+                            id="review-submission-section"
+                            ref={reviewSubmissionSectionRef}
+                            // Removed lg:col-span-1 to allow full width stacking
+                            className={`bg-white p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted ${showReviewSubmissionSection || window.innerWidth >= 1024 ? '' : 'hidden'}`}
                         >
-                            Submit Review
-                        </button>
-                        <div className="text-sm text-gray-500 mt-4">
-                            Your User ID: <span id="display-user-id">{currentUserId}</span>
-                        </div>
-                        {window.innerWidth < 1024 && (
-                            <button id="cancel-review-mobile-btn" className="bg-gray-400 text-white px-4 py-2 rounded-full mt-4 w-full" onClick={handleCancelReviewMobileClick}>
-                                Cancel
+                            <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Write a Review for <span id="display-selected-doctor-submission" className="text-[#CC5500]">{selectedDoctor?.name}</span></h2>
+                            {/* Star Rating */}
+                            <div className="mb-4">
+                                <label htmlFor="review-stars" className="block text-gray-700 text-sm font-medium mb-2">Rating</label>
+                                <StarRating rating={reviewRating} onRatingChange={setReviewRating} />
+                            </div>
+                            {/* Nursing Field Search Bar with Suggestions */}
+                            <div className="mb-4 relative"> {/* relative for absolute positioning of suggestions */}
+                                <label htmlFor="nursing-field-input" className="block text-gray-700 text-sm font-medium mb-2">
+                                    Which field of Nursing are you?
+                                </label>
+                                <input
+                                    type="text"
+                                    id="nursing-field-input"
+                                    className="w-full p-3 border border-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-custom-beige"
+                                    placeholder="Start typing your nursing field..."
+                                    value={searchQuery}
+                                    onChange={handleSearchInputChange}
+                                    onFocus={() => setShowSuggestions(true)}
+                                    onBlur={() => setTimeout(() => setShowSuggestions(false), 100)} // Delay to allow click on suggestion
+                                />
+                                {showSuggestions && filteredNursingFields.length > 0 && (
+                                    <ul className="absolute z-10 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto mt-1">
+                                        {filteredNursingFields.map((field, index) => (
+                                            <li
+                                                key={index}
+                                                className="p-3 hover:bg-gray-100 cursor-pointer text-gray-800"
+                                                onClick={() => handleSuggestionClick(field)}
+                                            >
+                                                {field}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                            <textarea
+                                id="review-text"
+                                className="w-full p-3 border border-gray-300 rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-custom-beige"
+                                rows="6"
+                                placeholder="Share your experience or review here..."
+                                value={reviewText}
+                                onChange={(e) => setReviewText(e.target.value)}
+                                maxLength={MAX_CHAR_LIMIT}
+                            ></textarea>
+                            {/* Submit Review Button - Always visible, but triggers login if not authenticated */}
+                            <button
+                                id="submit-review-btn"
+                                className="bg-custom-beige text-gray-800 font-bold py-3 px-6 rounded-full hover:opacity-90 transition duration-300 shadow-md w-full btn-hover-scale"
+                                onClick={handleSubmitReview}
+                            >
+                                Submit Review
                             </button>
-                        )}
-                    </section>
+                            <div className="text-sm text-gray-500 mt-4">
+                                Your User ID: <span id="display-user-id">{currentUserId}</span>
+                            </div>
+                            {window.innerWidth < 1024 && (
+                                <button id="cancel-review-mobile-btn" className="bg-gray-400 text-white px-4 py-2 rounded-full mt-4 w-full" onClick={handleCancelReviewMobileClick}>
+                                    Cancel
+                                </button>
+                            )}
+                        </section>
+                    )}
 
                     {/* Right Column: Reviews Display Section */}
-                    <section id="doctor-reviews-display" ref={doctorReviewsDisplaySectionRef} className="lg:col-span-2 bg-custom-beige p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted">
-                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Reviews for <span id="display-selected-doctor-reviews" className="text-[#CC5500] font-extrabold">{(selectedDoctor && selectedDoctor.name) ? selectedDoctor.name : ''}</span></h2>
-                        {window.innerWidth < 1024 && !showReviewSubmissionSection && (
+                    <section id="doctor-reviews-display" ref={doctorReviewsDisplaySectionRef}
+                        // Removed lg:col-span-2 to allow full width stacking
+                        className="bg-white p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted"> {/* Changed bg-custom-beige to bg-white */}
+                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Here's the tea on <span id="display-selected-doctor-reviews" className="text-[#CC5500] font-extrabold">{(selectedDoctor && selectedDoctor.name) ? selectedDoctor.name : ''}</span></h2>
+                        {window.innerWidth < 1024 && (currentUserId && !currentUserIsAnonymous) && ( // Conditionally render if user is signed in
                             <button
                                 id="add-review-mobile-btn"
                                 className="bg-[#001346] text-white px-5 py-2 rounded-md hover:bg-[#000A2C] transition duration-200 btn-hover-scale mb-4 w-full"
@@ -1092,38 +1098,42 @@ const ReviewsHubPage = () => {
                                     };
 
                                     return (
-                                        <div key={review.date.getTime() + index} className="bg-white p-5 rounded-lg shadow-md border border-gray-200">
+                                        <div key={review.date.getTime() + index} className="p-5 rounded-xl shadow-lg border border-gray-100" style={{backgroundColor: '#fefefa'}}> {/* Changed bg-gray-50 to inline style with #fffff0 */}
                                             {/* Inject schema for this specific review */}
                                             <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(reviewSchema) }} />
 
-                                            <div className="flex justify-between items-start mb-3">
-                                                <div className="min-w-0">
-                                                    <StarRating rating={review.stars} onRatingChange={() => {}} readOnly={true} />
-                                                    <p className="text-sm text-gray-500 mt-1 break-words">
-                                                        {review.nursingField} on: {review.date instanceof Date ? review.date.toLocaleDateString() : 'N/A'}
+                                            {/* Social Media Style Header */}
+                                            <div className="flex items-center mb-4">
+                                                {/* User Avatar Placeholder */}
+                                                <div className="w-10 h-10 bg-custom-beige rounded-full flex items-center justify-center text-gray-800 font-bold text-lg mr-3 shadow-sm">
+                                                    {review.reviewerId ? review.reviewerId.substring(3, 5).toUpperCase() : 'RN'} {/* Initials */}
+                                                </div>
+                                                <div>
+                                                    <p className="font-semibold text-gray-800">{review.reviewerId}</p>
+                                                    <p className="text-sm text-gray-600">{review.nursingField}</p>
+                                                    <p className="text-xs text-gray-500">
+                                                        {review.date instanceof Date ? review.date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
                                                     </p>
                                                 </div>
+                                                <div className="ml-auto"> {/* Star rating moved to the right */}
+                                                    <StarRating rating={review.stars} onRatingChange={() => {}} readOnly={true} />
+                                                </div>
                                             </div>
-                                            <p className="text-gray-800 leading-relaxed mb-4">{review.comment}</p>
 
-                                            {/* Comments Section */}
-                                            <div className="mt-4 border-t border-gray-100 pt-4">
-                                                <h4 className="text-md font-semibold text-gray-700 mb-3">Comments ({review.comments ? review.comments.length : 0})</h4>
-                                                {review.comments && review.comments.length > 0 ? (
-                                                    <div className="space-y-3 mb-4">
-                                                        {review.comments.map((comment, commentIndex) => (
-                                                            <div key={comment.date.getTime() + '_' + commentIndex} className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700 border border-gray-100">
-                                                                <p>{comment.text}</p>
-                                                                <p className="text-xs text-gray-500 mt-1">
-                                                                    by {comment.userId} on {comment.date instanceof Date ? comment.date.toLocaleDateString() : 'N/A'}
-                                                                </p>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <p className="text-sm text-gray-500 mb-3">No comments yet. Be the first!</p>
-                                                )}
-                                                {/* Add Comment Button - Always visible, but triggers login if not authenticated */}
+                                            {/* Review Body */}
+                                            {/* Removed bg-custom-beige and padding from the review comment paragraph */}
+                                            <p className="text-gray-800 leading-relaxed mb-4 text-base">
+                                                {review.comment}
+                                            </p>
+
+                                            {/* Engagement Buttons (Placeholders) */}
+                                            <div className="flex items-center gap-4 border-t border-gray-100 pt-3 mt-3">
+                                                <button className="flex items-center text-gray-600 hover:text-blue-500 transition-colors">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                                        <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
+                                                    </svg>
+                                                    Like (0)
+                                                </button>
                                                 <button
                                                     onClick={() => {
                                                         if (!currentUserId || currentUserIsAnonymous) {
@@ -1133,12 +1143,39 @@ const ReviewsHubPage = () => {
                                                             setShowCommentInput(prev => ({ ...prev, [review.date.getTime()]: !prev[review.date.getTime()] }));
                                                         }
                                                     }}
-                                                    className="text-blue-500 hover:underline text-sm mb-3"
+                                                    className="flex items-center text-gray-600 hover:text-green-500 transition-colors"
                                                 >
-                                                    {showCommentInput[review.date.getTime()] && currentUserId && !currentUserIsAnonymous ? 'Cancel Comment' : 'Add a Comment'}
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                                        <path fillRule="evenodd" d="M18 13V5a2 2 0 00-2-2H4a2 2 0 00-2 2v8a2 2 0 002 2h3l3 3 3-3h3a2 2 0 002-2zM5 7a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1zm1 3a1 1 0 100 2h3a1 1 0 100-2H6z" clipRule="evenodd" />
+                                                    </svg>
+                                                    Comment ({review.comments ? review.comments.length : 0})
                                                 </button>
+                                            </div>
 
-                                                {showCommentInput[review.date.getTime()] && currentUserId && !currentUserIsAnonymous && ( // Only show input if logged in and not anonymous
+                                            {/* Comments Section */}
+                                            <div className="mt-4 border-t border-gray-100 pt-4">
+                                                {review.comments && review.comments.length > 0 ? (
+                                                    <div className="space-y-3 mb-4">
+                                                        {review.comments.map((comment, commentIndex) => (
+                                                            <div key={comment.date.getTime() + '_' + commentIndex} className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700 border border-gray-100">
+                                                                <div className="flex items-center mb-1">
+                                                                    <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-800 text-xs font-semibold mr-2">
+                                                                        {comment.userId ? comment.userId.substring(3, 5).toUpperCase() : 'U'}
+                                                                    </div>
+                                                                    <p className="font-medium text-gray-800">{comment.userId}</p>
+                                                                    <p className="text-xs text-gray-500 ml-auto">
+                                                                        {comment.date instanceof Date ? comment.date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
+                                                                    </p>
+                                                                </div>
+                                                                <p className="ml-8 text-gray-700">{comment.text}</p> {/* Indent comment text */}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-sm text-gray-500 mb-3">No comments yet. Be the first!</p>
+                                                )}
+                                                {/* Add Comment Input */}
+                                                {showCommentInput[review.date.getTime()] && currentUserId && !currentUserIsAnonymous && (
                                                     <div className="flex mt-2">
                                                         <input
                                                             type="text"
@@ -1154,7 +1191,7 @@ const ReviewsHubPage = () => {
                                                             onChange={(e) => setCommentText(prev => ({ ...prev, [review.date.getTime()]: e.target.value }))}
                                                         />
                                                         <button
-                                                            className="submit-comment-btn bg-gray-600 text-white px-4 py-2 rounded-r-md hover:bg-gray-700 transition duration-200 btn-hover-scale"
+                                                            className="submit-comment-btn bg-blue-600 text-white px-4 py-2 rounded-r-md hover:bg-blue-700 transition duration-200 btn-hover-scale"
                                                             onClick={() => {
                                                                 const valueToPost = commentText[review.date.getTime()];
                                                                 handleAddCommentToReview(review.date.getTime(), valueToPost);
