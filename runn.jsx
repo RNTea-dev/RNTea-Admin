@@ -11,8 +11,7 @@ import {
 } from 'firebase/firestore';
 import {
     fetchSignInMethodsForEmail,
-    RecaptchaVerifier, // NEW: Import RecaptchaVerifier
-    signInWithPhoneNumber // NEW: Import signInWithPhoneNumber
+    signInWithPhoneNumber
 } from 'firebase/auth';
 
 const AuthModal = ({ onClose }) => {
@@ -22,35 +21,33 @@ const AuthModal = ({ onClose }) => {
         signInWithApple,
         linkAnonymousWithEmailPassword,
         linkAnonymousWithApple,
-        auth, // Access auth instance to check if user is anonymous
-        currentUserId, // To display user ID
+        auth,
+        currentUserId,
         signInWithGoogle,
-        db, // Access db instance from context
-        appId // Access appId from context
+        db,
+        appId
     } = useContext(FirebaseContext);
 
-    const [isLogin, setIsLogin] = useState(true); // Toggle between login and signup
+    const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
-    const [phoneNumber, setPhoneNumber] = useState(''); // State for phone number input
-    const [message, setMessage] = useState(''); // Local message for modal
-    const [messageType, setMessageType] = useState(''); // 'success' or 'error'
-    const [currentStep, setCurrentStep] = useState(0); // State for carousel step (0: email, 1: password/confirm, 2: phoneNumber)
+    const [phoneNumber, setPhoneNumber] = useState('');
+    const [message, setMessage] = useState('');
+    const [messageType, setMessageType] = useState('');
+    const [currentStep, setCurrentStep] = useState(0);
 
-    // NEW states for phone verification
-    const [verificationId, setVerificationId] = useState(null); // Stores confirmationResult after sending OTP
-    const [otp, setOtp] = useState(''); // User entered OTP
-    const [isSendingOtp, setIsSendingOtp] = useState(false); // Loading state for sending OTP
-    const [isVerifyingOtp, setIsVerifyingOtp] = useState(false); // Loading state for verifying OTP
+    const [verificationId, setVerificationId] = useState(null);
+    const [otp, setOtp] = useState('');
+    const [isSendingOtp, setIsSendingOtp] = useState(false);
+    const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
 
-    // State for input validation errors
     const [emailError, setEmailError] = useState('');
     const [passwordError, setPasswordError] = useState('');
     const [confirmPasswordError, setConfirmPasswordError] = useState('');
     const [phoneNumberError, setPhoneNumberError] = useState('');
     const [otpError, setOtpError] = useState('');
-    const [username, setUsername] = useState(''); // Assuming username is part of signup
+    const [username, setUsername] = useState('');
     const [usernameError, setUsernameError] = useState('');
 
 
@@ -65,101 +62,23 @@ const AuthModal = ({ onClose }) => {
 
     const isAnonymous = auth?.currentUser?.isAnonymous;
 
-    // Function to check if email already exists
     const checkEmailExists = useCallback(async (emailToCheck) => {
-        console.log("checkEmailExists: Checking email:", emailToCheck); // Debug log
-        console.log("checkEmailExists: Current auth object:", auth); // Debug log
+        console.log("checkEmailExists: Checking email:", emailToCheck);
+        console.log("checkEmailExists: Current auth object:", auth);
         if (!auth) {
             console.error("Firebase Auth not initialized for email check.");
             return false;
         }
         try {
             const signInMethods = await fetchSignInMethodsForEmail(auth, emailToCheck);
-            console.log("checkEmailExists: Sign-in methods for email:", signInMethods); // Debug log
-            return signInMethods.length > 0; // True if any sign-in methods exist for this email
+            console.log("checkEmailExists: Sign-in methods for email:", signInMethods);
+            return signInMethods.length > 0;
         } catch (error) {
             console.error("Error checking email existence:", error);
-            console.error("Full error object:", JSON.stringify(error, null, 2)); // Debug log
+            console.error("Full error object:", JSON.stringify(error, null, 2));
             return false;
         }
     }, [auth]);
-
-    // NEW: useEffect for reCAPTCHA initialization directly in AuthModal
-    useEffect(() => {
-        // Only initialize reCAPTCHA if we are in signup mode, on the phone step,
-        // auth is available, and window.recaptchaVerifier is not yet initialized.
-        if (!isLogin && currentStep === 2 && auth && !window.recaptchaVerifier) {
-            console.log("AuthModal: Initializing reCAPTCHA Verifier...");
-
-            // Ensure grecaptcha script is loaded and ready before creating RecaptchaVerifier
-            if (typeof window.grecaptcha === 'undefined' || !window.grecaptcha.ready) {
-                console.warn("AuthModal: grecaptcha script not fully loaded yet. Retrying initialization...");
-                // Re-attempt initialization after a short delay if grecaptcha isn't ready
-                const timeoutId = setTimeout(() => {
-                    // Trigger a re-render to re-evaluate this useEffect
-                    setCurrentStep(prev => prev); // No actual step change, just to trigger re-render
-                }, 500);
-                return () => clearTimeout(timeoutId); // Cleanup timeout
-            }
-
-            window.grecaptcha.ready(() => {
-                if (window.recaptchaVerifier) { // Double-check inside ready callback
-                    console.log("AuthModal: reCAPTCHA Verifier already exists, skipping re-initialization.");
-                    return;
-                }
-
-                console.log("AuthModal: grecaptcha is ready. Creating RecaptchaVerifier...");
-                try {
-                    window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-                        'size': 'invisible', // Invisible reCAPTCHA
-                        'callback': (response) => {
-                            console.log("AuthModal: reCAPTCHA callback fired (solved):", response);
-                        },
-                        'expired-callback': () => {
-                            console.log("AuthModal: reCAPTCHA expired.");
-                            showLocalMessage('Verification expired. Please try again.', 'error');
-                            setVerificationId(null);
-                            if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                                window.grecaptcha.reset();
-                            }
-                        },
-                        'error-callback': (error) => {
-                            console.error("AuthModal: reCAPTCHA error callback:", error);
-                            showLocalMessage('Verification error. Please try again.', 'error');
-                            setVerificationId(null);
-                            if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                                window.grecaptcha.reset();
-                            }
-                        }
-                    });
-
-                    window.recaptchaVerifier.render().then((widgetId) => {
-                        console.log("AuthModal: reCAPTCHA rendered with widget ID:", widgetId);
-                    }).catch(error => {
-                        console.error("AuthModal: Error rendering reCAPTCHA:", error);
-                        showLocalMessage('Failed to initialize verification. Please refresh.', 'error');
-                        delete window.recaptchaVerifier; // Clean up on error
-                    });
-                } catch (error) {
-                    console.error("AuthModal: Error creating RecaptchaVerifier instance:", error);
-                    showLocalMessage('Failed to initialize verification. Check console.', 'error');
-                }
-            });
-        }
-
-        // Cleanup function for reCAPTCHA
-        return () => {
-            if (window.recaptchaVerifier) {
-                console.log("AuthModal: Cleaning up reCAPTCHA Verifier...");
-                if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                    window.grecaptcha.reset(); // Reset the widget first
-                }
-                // Firebase's RecaptchaVerifier.clear() is sometimes needed, but deleting global reference is often sufficient for single-page apps
-                // window.recaptchaVerifier.clear(); // Uncomment if issues persist
-                delete window.recaptchaVerifier; // Ensure global reference is removed
-            }
-        };
-    }, [isLogin, currentStep, auth, showLocalMessage]);
 
 
     const handleSendOtp = useCallback(async () => {
@@ -183,40 +102,7 @@ const AuthModal = ({ onClose }) => {
             showLocalMessage('Authentication service not ready.', 'error');
             return;
         }
-        // Ensure reCAPTCHA is initialized and ready
-        if (!window.recaptchaVerifier || !(window.grecaptcha && typeof window.grecaptcha.render === 'function')) {
-            showLocalMessage('Verification system not ready. Please wait a moment and try again.', 'error');
-            console.error("AuthModal: reCAPTCHA verifier not available or grecaptcha not loaded.");
-            return;
-        }
-
-        setIsSendingOtp(true);
-        try {
-            await window.recaptchaVerifier.verify(); // Explicitly trigger reCAPTCHA verification
-
-            const confirmation = await signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
-            setVerificationId(confirmation);
-            showLocalMessage('Verification code sent! Please check your phone.', 'success');
-        } catch (error) {
-            console.error("Error sending OTP:", error);
-            let errorMessage = 'Failed to send code. Please try again.';
-            if (error.code === 'auth/invalid-phone-number') {
-                errorMessage = 'Invalid phone number format. Please ensure it includes the country code (e.g., +11234567890).';
-            } else if (error.code === 'auth/too-many-requests') {
-                errorMessage = 'Too many requests. Please try again later.';
-            } else if (error.code === 'auth/captcha-check-failed') {
-                errorMessage = 'Security check failed. Please try again.';
-            }
-            showLocalMessage(errorMessage, 'error');
-            setVerificationId(null);
-            if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                window.grecaptcha.reset();
-            }
-        } finally {
-            setIsSendingOtp(false);
-        }
-    }, [phoneNumber, username, auth, showLocalMessage]);
-
+       
     const handleVerifyOtp = useCallback(async () => {
         setMessage('');
         setOtpError('');
@@ -237,10 +123,9 @@ const AuthModal = ({ onClose }) => {
             if (db && user && appId) {
                 try {
                     await setDoc(doc(db, 'artifacts', appId, 'users', user.uid), {
-                        email: user.email || null,
+                        email: user.email,
                         phoneNumber: phoneNumber,
                         username: username,
-                        createdAt: new Date(),
                     }, { merge: true });
                     console.log("User profile with phone number and username info saved.");
                 } catch (dbError) {
@@ -253,27 +138,15 @@ const AuthModal = ({ onClose }) => {
 
             showLocalMessage('Phone number verified and account created!', 'success');
             onClose();
-            if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                window.grecaptcha.reset();
-            }
 
         } catch (error) {
             console.error("Error verifying OTP:", error);
-            let errorMessage = 'Failed to verify code. Please try again.';
-            if (error.code === 'auth/invalid-verification-code') {
-                errorMessage = 'Invalid verification code. Please check the code and try again.';
-            } else if (error.code === 'auth/code-expired') {
-                errorMessage = 'The verification code has expired. Please resend the code.';
-            }
-            showLocalMessage(errorMessage, 'error');
+            showLocalMessage(`Failed to verify code: ${error.message}`, 'error');
             setOtpError('Invalid verification code. Please try again.');
-            if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                window.grecaptcha.reset();
-            }
+
         } finally {
             setIsVerifyingOtp(false);
         }
-    }, [otp, verificationId, db, appId, phoneNumber, username, showLocalMessage, onClose]);
 
     const handleNextStep = useCallback(async (e) => {
         e.preventDefault();
@@ -285,7 +158,7 @@ const AuthModal = ({ onClose }) => {
         setOtpError('');
         setUsernameError('');
 
-        console.log("handleNextStep: Current step BEFORE update:", currentStep, "isLogin:", isLogin);
+        console.log("handleNextStep: Current step:", currentStep, "isLogin:", isLogin);
 
         if (currentStep === 0) {
             if (!email) {
@@ -300,14 +173,9 @@ const AuthModal = ({ onClose }) => {
                     return;
                 }
             }
-            setCurrentStep(prev => prev + 1);
         } else if (currentStep === 1) {
             if (!password) {
                 setPasswordError('Please enter your password.');
-                return;
-            }
-            if (password.length < 6) {
-                setPasswordError('Password must be at least 6 characters long.');
                 return;
             }
             if (!confirmPassword) {
@@ -318,7 +186,6 @@ const AuthModal = ({ onClose }) => {
                 setConfirmPasswordError('Passwords do not match.');
                 return;
             }
-            setCurrentStep(prev => prev + 1);
         } else if (currentStep === 2) {
             if (!username.trim()) {
                 setUsernameError('Please enter a username.');
@@ -328,16 +195,13 @@ const AuthModal = ({ onClose }) => {
                 setPhoneNumberError('Please enter your phone number.');
                 return;
             }
-            if (!verificationId) {
-                if (!window.recaptchaVerifier || !(window.grecaptcha && typeof window.grecaptcha.render === 'function')) {
-                    showLocalMessage('Verification system not ready. Please wait a moment and try again.', 'error');
-                    console.error("AuthModal: reCAPTCHA verifier not available or grecaptcha not loaded in handleNextStep.");
-                    return;
-                }
-                await handleSendOtp();
-            }
+
+            return;
         }
-        console.log("handleNextStep: Current step AFTER update:", currentStep);
+
+        if (currentStep < 2) {
+            setCurrentStep(prev => prev + 1);
+        }
     }, [email, password, confirmPassword, phoneNumber, username, currentStep, isLogin, checkEmailExists, handleSendOtp, verificationId, showLocalMessage]);
 
 
@@ -349,18 +213,14 @@ const AuthModal = ({ onClose }) => {
         setPhoneNumberError('');
         setOtpError('');
         setUsernameError('');
-
-        console.log("handlePrevStep: Current step BEFORE update:", currentStep);
         if (currentStep > 0) {
             setCurrentStep(prev => prev - 1);
             setVerificationId(null);
             setOtp('');
-            if (currentStep === 2 && window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                window.grecaptcha.reset();
-            }
+            // Re-added reCAPTCHA reset
+            resetRecaptcha();
         }
-        console.log("handlePrevStep: Current step AFTER update:", currentStep);
-    }, [currentStep]);
+    }, [currentStep, resetRecaptcha]); // Re-added resetRecaptcha to dependencies
 
 
     const handleAuthAction = async (e) => {
@@ -394,12 +254,14 @@ const AuthModal = ({ onClose }) => {
                 showLocalMessage(`An unexpected error occurred: ${error.message}`, 'error');
             }
         } else {
+            // Sign Up logic (multi-step carousel)
             if (currentStep < 2) {
                 await handleNextStep(e);
             } else if (currentStep === 2 && !verificationId) {
-                if (!window.recaptchaVerifier || !(window.grecaptcha && typeof window.grecaptcha.render === 'function')) {
+                // Re-added reCAPTCHA verifier check for Firebase Auth API requirement
+                if (!recaptchaVerifier) {
                     showLocalMessage('Verification system not ready. Please wait a moment and try again.', 'error');
-                    console.error("AuthModal: reCAPTCHA verifier not available or grecaptcha not loaded in handleAuthAction.");
+                    console.error("reCAPTCHA verifier instance not available in AuthModal (handleAuthAction called prematurely).");
                     return;
                 }
                 await handleSendOtp();
@@ -442,14 +304,9 @@ const AuthModal = ({ onClose }) => {
         setPhoneNumberError('');
         setOtpError('');
         setUsernameError('');
-        if (window.recaptchaVerifier) {
-            console.log("AuthModal: Clearing and deleting reCAPTCHA Verifier on mode toggle.");
-            if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                window.grecaptcha.reset();
-            }
-            delete window.recaptchaVerifier;
-        }
-    }, []);
+        // Re-added reCAPTCHA reset
+        resetRecaptcha();
+    }, [resetRecaptcha]); // Re-added resetRecaptcha to dependencies
 
 
     return (
@@ -582,9 +439,14 @@ const AuthModal = ({ onClose }) => {
                                                     placeholder="e.g., +11234567890"
                                                     value={phoneNumber}
                                                     onChange={(e) => { setPhoneNumber(e.target.value); setPhoneNumberError(''); }}
-                                                    disabled={isSendingOtp}
+                                                    disabled={isSendingOtp || !isRecaptchaReadyForUse || !recaptchaVerifier} // Re-added reCAPTCHA disabled condition
                                                 />
                                                 <p className="text-xs text-gray-500 mt-1 text-left">For human verification purposes only! Include country code (e.g., +1).</p>
+                                                {/* Re-added reCAPTCHA loading message */}
+                                                {!isRecaptchaReadyForUse || !recaptchaVerifier && (
+                                                    <p className="text-sm text-gray-500 mt-2 text-center">Loading verification...</p>
+                                                )}
+                                                {/* Re-added reCAPTCHA container div */}
                                                 <div id="recaptcha-container" className="mt-4"></div>
                                             </div>
                                         ) : (
@@ -604,7 +466,7 @@ const AuthModal = ({ onClose }) => {
                                                 <button
                                                     type="button"
                                                     onClick={handleSendOtp}
-                                                    disabled={isSendingOtp || isVerifyingOtp}
+                                                    disabled={isSendingOtp || isVerifyingOtp || !isRecaptchaReadyForUse || !recaptchaVerifier} // Re-added reCAPTCHA disabled condition
                                                     className="w-full bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-full hover:bg-gray-400 transition duration-300 shadow-md hover:shadow-lg transform hover:scale-105 mt-2"
                                                 >
                                                     {isSendingOtp ? 'Sending...' : 'Resend Code'}
@@ -620,64 +482,58 @@ const AuthModal = ({ onClose }) => {
                     {/* Carousel Indicators (only for signup) */}
                     {!isLogin && (
                         <div className="flex justify-center space-x-2 mt-4">
-                            {[0, 1, 2].map((stepIdx) => ( // Explicitly render 3 bubbles
+                            {[0, 1, 2].map((stepIdx) => (
                                 <span
                                     key={stepIdx}
                                     className={`block w-3 h-3 rounded-full transition-colors duration-300
                                         ${currentStep === stepIdx ? 'bg-[#CC5500] scale-125' : 'bg-gray-300 hover:bg-gray-400 cursor-pointer'}`}
                                     onClick={() => setCurrentStep(stepIdx)}
-                                    role="button"
-                                    tabIndex="0"
                                     aria-label={`Go to step ${stepIdx + 1}`}
                                 ></span>
                             ))}
                         </div>
                     )}
 
-                    {/* Navigation Buttons (Previous and Main Auth Button) */}
-                    <div className="flex justify-between items-center mt-4 w-full px-4">
-                        {/* Previous button */}
-                        {!isLogin && currentStep > 0 && (
-                            <button
-                                type="button"
-                                onClick={handlePrevStep}
-                                className="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-full hover:bg-gray-400 transition duration-300 shadow-md hover:shadow-lg transform hover:scale-105 min-w-[100px]"
-                            >
-                                Previous
-                            </button>
-                        )}
-                        {/* Spacer div to push main button to the right if no "Previous" button */}
-                        {(!isLogin && currentStep === 0) && <div className="flex-grow"></div>}
+                    {/* Navigation Buttons for Signup Carousel (Previous only) */}
+                    {!isLogin && (
+                        <div className="flex justify-start mt-4 w-full px-4">
+                            {currentStep > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={handlePrevStep}
+                                    className="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-full hover:bg-gray-400 transition duration-300 shadow-md hover:shadow-lg transform hover:scale-105"
+                                >
+                                    Previous
+                                </button>
+                            )}
+                        </div>
+                    )}
 
-
-                        {/* Main Auth Button (Sign In or dynamic Sign Up action) */}
-                        <button
-                            type="submit"
-                            className={`font-bold py-3 px-6 rounded-full transition duration-300 shadow-lg hover:shadow-xl transform hover:scale-105
-                                ${isLogin
-                                    ? 'bg-[#FFDEB5] text-gray-800 hover:bg-[#FFC982] w-full'
-                                    : 'bg-[#CC5500] text-white hover:bg-[#A84500] w-auto ml-auto'
-                                }`}
-                            disabled={
-                                (isLogin && (isSendingOtp || isVerifyingOtp)) ||
-                                (!isLogin && currentStep === 2 && !verificationId && isSendingOtp) ||
-                                (!isLogin && currentStep === 2 && verificationId && isVerifyingOtp)
-                            }
-                        >
-                            {isLogin
-                                ? 'Sign In'
-                                : currentStep === 0
+                    {/* Main Auth Button (Sign In or dynamic Sign Up action) */}
+                    <button
+                        type="submit"
+                        className={`w-full font-bold py-3 px-6 rounded-full transition duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 mt-4
+                            ${isLogin
+                                ? 'bg-[#FFDEB5] text-gray-800 hover:bg-[#FFC982]'
+                                : 'bg-[#CC5500] text-white hover:bg-[#A84500]'
+                            }`}
+                        disabled={
+                            (isLogin && (isSendingOtp || isVerifyingOtp)) ||
+                            (!isLogin && currentStep === 2 && (!isRecaptchaReadyForUse || !recaptchaVerifier || isSendingOtp || verificationId)) || // Adjusted disabled condition for Send Code button
+                            (!isLogin && currentStep === 2 && verificationId && isVerifyingOtp)
+                        }
+                    >
+                        {isLogin
+                            ? 'Sign In'
+                            : currentStep === 0
+                                ? 'Next'
+                                : currentStep === 1
                                     ? 'Next'
-                                    : currentStep === 1
-                                        ? 'Next'
-                                        : currentStep === 2 && !verificationId
-                                            ? (isSendingOtp ? 'Sending Code...' : 'Send Code')
-                                            : (isVerifyingOtp ? 'Verifying...' : 'Verify Code')
-                            }
-                        </button>
-                    </div>
-
-
+                                    : currentStep === 2 && !verificationId
+                                        ? (isSendingOtp ? 'Sending Code...' : 'Send Code') // Simplified button text
+                                        : (isVerifyingOtp ? 'Verifying...' : 'Verify Code')
+                        }
+                    </button>
                 </form>
 
                 <div className="mt-6 text-center">

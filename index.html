@@ -14,7 +14,10 @@
 <body class="font-sans antialiased text-gray-900">
     <div id="root"></div>
     <!-- The main JavaScript entry point for your React application -->
-    <!-- THIS SCRIPT MUST BE UNCOMMENTED FOR YOUR REACT APP TO LOAD -->
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- IMPORTANT: Google reCAPTCHA v2 API script -->
+    <!-- The onloadCallback function will be defined in your App.jsx -->
+    <script src="https://www.google.com/recaptcha/api.js?onload=onloadCallback&render=explicit" async defer></script>
 </body>
 </html>

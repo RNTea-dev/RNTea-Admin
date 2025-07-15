@@ -1,5 +1,7 @@
 {
-  "projects": {},
+  "projects": {
+    "default": "rntea-cca78"
+  },
   "targets": {
     "rntea-cca78": {
       "hosting": {

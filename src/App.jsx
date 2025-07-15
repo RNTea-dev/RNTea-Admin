@@ -106,11 +106,16 @@ export default function App() {
     const navigate = useNavigate();
     const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
-    // NEW: Ref for centralized reCAPTCHA instance
-    const recaptchaVerifierRef = useRef(null);
-    const recaptchaWidgetIdRef = useRef(null);
+    // NEW: State to hold the RecaptchaVerifier instance
+    const [recaptchaVerifierState, setRecaptchaVerifierState] = useState(null);
+    const recaptchaWidgetIdRef = useRef(null); // Still use ref for widget ID
     // NEW: State to explicitly track if reCAPTCHA is ready for use
     const [isRecaptchaReadyForUse, setIsRecaptchaReadyForUse] = useState(false);
+    // NEW: State to track if the grecaptcha script itself has loaded
+    const [grecaptchaLoaded, setGrecaptchaLoaded] = useState(false);
+
+    // State to force AuthModal re-render when reCAPTCHA readiness changes
+    const [recaptchaKeyCounter, setRecaptchaKeyCounter] = useState(0);
 
 
     const showMessage = useCallback((text, type) => {
@@ -228,103 +233,130 @@ export default function App() {
     }, [location.pathname, canvasFirebaseConfig, showMessage]);
 
 
-    // NEW: Centralized reCAPTCHA initialization
-    useEffect(() => {
-        // Only initialize reCAPTCHA if Firebase Auth is ready AND it hasn't been initialized yet
-        if (auth && !recaptchaVerifierRef.current) {
-            console.log("App.jsx: Attempting to initialize centralized reCAPTCHA...");
+    // NEW: Global window.onloadCallback for reCAPTCHA script
+    // This will be called by the reCAPTCHA script once it's loaded.
+    // It must be defined globally and immediately, not inside a useEffect.
+    window.onloadCallback = () => {
+        console.log("App.jsx: window.onloadCallback triggered from reCAPTCHA script.");
+        setGrecaptchaLoaded(true); // Mark grecaptcha script as loaded
+    };
 
-            // Ensure grecaptcha is available and ready
-            if (!window.grecaptcha || !window.grecaptcha.ready) {
-                console.log("App.jsx: grecaptcha not ready yet. Waiting...");
-                return;
-            }
+    // NEW: Effect to initialize RecaptchaVerifier once auth and grecaptcha are ready
+    useEffect(() => {
+        // Only attempt to initialize RecaptchaVerifier if:
+        // 1. Firebase Auth is ready (`authReady` is true and `auth` instance exists)
+        // 2. The grecaptcha script has loaded (`grecaptchaLoaded` is true)
+        // 3. `window.grecaptcha` and `window.grecaptcha.ready` are available
+        // 4. A RecaptchaVerifier instance hasn't been created yet (`!recaptchaVerifierState`)
+        if (authReady && auth && grecaptchaLoaded && typeof window.grecaptcha !== 'undefined' && window.grecaptcha.ready && !recaptchaVerifierState) {
+            console.log("App.jsx: All prerequisites met. Initializing RecaptchaVerifier...");
 
             window.grecaptcha.ready(() => {
                 // Double-check inside ready callback to prevent re-initialization
-                if (recaptchaVerifierRef.current) {
-                    console.log("App.jsx: RecaptchaVerifier already exists, skipping re-initialization.");
+                // This check is crucial because `grecaptcha.ready` can be called multiple times.
+                if (recaptchaVerifierState) { // Check state, not ref
+                    console.log("App.jsx: RecaptchaVerifier already exists in state, skipping re-initialization.");
                     setIsRecaptchaReadyForUse(true); // Ensure state is true if already initialized
                     return;
                 }
 
-                console.log("App.jsx: grecaptcha is ready. Initializing RecaptchaVerifier...");
+                console.log("App.jsx: Creating and rendering RecaptchaVerifier instance...");
                 try {
                     const container = document.getElementById('recaptcha-container-app');
                     if (!container) {
                         console.error("App.jsx: Central reCAPTCHA container 'recaptcha-container-app' not found!");
-                        showMessage('reCAPTCHA container missing from App.jsx. Verification may fail.', 'error');
+                        showMessage('reCAPTCHA container missing. Phone verification may fail.', 'error');
                         return;
                     }
 
                     const verifier = new RecaptchaVerifier(auth, 'recaptcha-container-app', {
-                        'size': 'invisible',
+                        'size': 'invisible', // Use 'invisible' for seamless experience
                         'callback': (response) => {
-                            console.log("App.jsx: Central reCAPTCHA callback fired:", response);
+                            console.log("App.jsx: Central reCAPTCHA callback fired (solved):", response);
+                            setIsRecaptchaReadyForUse(true);
+                            setRecaptchaKeyCounter(prev => prev + 1); // Force re-render for AuthModal
                         },
                         'expired-callback': () => {
                             console.log("App.jsx: Central reCAPTCHA expired.");
                             showMessage('Verification expired. Please try again.', 'error');
-                            if (recaptchaWidgetIdRef.current !== null) {
+                            setIsRecaptchaReadyForUse(false);
+                            if (recaptchaWidgetIdRef.current !== null && window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
                                 window.grecaptcha.reset(recaptchaWidgetIdRef.current);
                             }
+                            setRecaptchaKeyCounter(prev => prev + 1); // Force re-render for AuthModal
+                        },
+                        'error-callback': (error) => {
+                            console.error("App.jsx: reCAPTCHA error callback:", error);
+                            showMessage('Failed to load verification. Please refresh.', 'error');
+                            setIsRecaptchaReadyForUse(false);
+                            setRecaptchaKeyCounter(prev => prev + 1); // Force re-render for AuthModal
                         }
                     });
 
                     verifier.render().then((widgetId) => {
                         console.log("App.jsx: Central reCAPTCHA rendered with widget ID:", widgetId);
                         recaptchaWidgetIdRef.current = widgetId;
-                        recaptchaVerifierRef.current = verifier; // Set the ref with the rendered instance
-                        window.recaptchaVerifier = verifier; // Explicitly set window.recaptchaVerifier
-                        setIsRecaptchaReadyForUse(true); // Mark as ready for use
-                        console.log("App.jsx: recaptchaVerifierRef.current set and isRecaptchaReadyForUse true.");
+                        setRecaptchaVerifierState(verifier); // Store verifier in state
+                        if (verifier.size === 'invisible') {
+                            setIsRecaptchaReadyForUse(true); // Mark as ready once rendered for invisible
+                        }
+                        console.log("App.jsx: recaptchaVerifierState set and isRecaptchaReadyForUse true.");
+                        setRecaptchaKeyCounter(prev => prev + 1); // Force re-render for AuthModal
                     }).catch(error => {
                         console.error("App.jsx: Error rendering central reCAPTCHA:", error);
-                        showMessage('Failed to load verification. Please refresh.', 'error');
-                        setIsRecaptchaReadyForUse(false); // Mark as not ready on error
+                        showMessage('Failed to initialize verification. Please refresh.', 'error');
+                        setIsRecaptchaReadyForUse(false);
+                        setRecaptchaKeyCounter(prev => prev + 1); // Force re-render for AuthModal
                     });
                 } catch (error) {
                     console.error("App.jsx: Error creating central RecaptchaVerifier instance:", error);
                     showMessage('Failed to initialize verification. Check console.', 'error');
-                    setIsRecaptchaReadyForUse(false); // Mark as not ready on error
+                    setIsRecaptchaReadyForUse(false);
+                    setRecaptchaKeyCounter(prev => prev + 1); // Force re-render for AuthModal
                 }
             });
+        } else if (recaptchaVerifierState && recaptchaVerifierState.size === 'invisible') {
+            // If already initialized and invisible, ensure state is true
+            // This handles cases where the useEffect might re-run but verifier is already there.
+            if (!isRecaptchaReadyForUse) { // Only update if state is false
+                setIsRecaptchaReadyForUse(true);
+                setRecaptchaKeyCounter(prev => prev + 1); // Trigger re-render
+            }
         }
+    }, [authReady, auth, grecaptchaLoaded, showMessage, isRecaptchaReadyForUse, recaptchaVerifierState]); // Added recaptchaVerifierState to dependencies
 
-        // Cleanup function for reCAPTCHA
+
+    // Cleanup function for reCAPTCHA
+    useEffect(() => {
         return () => {
-            if (recaptchaVerifierRef.current) {
+            if (recaptchaVerifierState) { // Check state, not ref
                 console.log("App.jsx: Cleaning up central reCAPTCHA Verifier...");
                 if (recaptchaWidgetIdRef.current !== null && window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                    // It's safer to use the specific widget ID for reset if it exists
                     window.grecaptcha.reset(recaptchaWidgetIdRef.current);
                 } else if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                    // Fallback to general reset if widgetId is not available (though it should be)
                     console.warn("App.jsx: Attempting general reCAPTCHA reset as widget ID is null.");
                     window.grecaptcha.reset();
                 }
-                // Clear the verifier instance from the ref and window object
-                recaptchaVerifierRef.current.clear();
-                recaptchaVerifierRef.current = null;
+                recaptchaVerifierState.clear(); // Clear the instance from state
+                setRecaptchaVerifierState(null); // Set state to null
                 recaptchaWidgetIdRef.current = null;
-                setIsRecaptchaReadyForUse(false); // Reset readiness on cleanup
-                if (window.recaptchaVerifier) {
-                    delete window.recaptchaVerifier;
-                }
+                setIsRecaptchaReadyForUse(false);
+                setRecaptchaKeyCounter(prev => prev + 1); // Trigger re-render
             }
         };
-    }, [auth, showMessage]); // Removed isRecaptchaReadyForUse from dependencies to prevent re-renders
+    }, [recaptchaVerifierState]); // Added recaptchaVerifierState to dependencies
 
 
-    // NEW: Function to execute reCAPTCHA, passed down via context
+    // Function to execute reCAPTCHA, passed down via context
     const executeRecaptcha = useCallback(async () => {
-        if (!isRecaptchaReadyForUse || !recaptchaVerifierRef.current || typeof recaptchaVerifierRef.current.execute !== 'function') {
-            console.error("App.jsx: reCAPTCHA Verifier not ready for execution. isReady:", isRecaptchaReadyForUse, "instance:", recaptchaVerifierRef.current);
+        // Ensure recaptchaVerifierState is not null AND it has an execute method
+        if (!isRecaptchaReadyForUse || !recaptchaVerifierState || typeof recaptchaVerifierState.execute !== 'function') {
+            console.error("App.jsx: reCAPTCHA Verifier not ready for execution. isReady:", isRecaptchaReadyForUse, "instance:", recaptchaVerifierState);
             showMessage('Verification not ready. Please try again.', 'error');
             throw new Error('reCAPTCHA not ready.');
         }
         try {
-            const token = await recaptchaVerifierRef.current.execute();
+            const token = await recaptchaVerifierState.execute(); // Use state, not ref
             console.log("App.jsx: reCAPTCHA token obtained:", token);
             return token;
         } catch (error) {
@@ -332,9 +364,9 @@ export default function App() {
             showMessage(`Verification failed: ${error.message}`, 'error');
             throw error; // Re-throw to allow calling component to handle
         }
-    }, [showMessage, isRecaptchaReadyForUse]); // Added isRecaptchaReadyForUse to dependencies
+    }, [showMessage, isRecaptchaReadyForUse, recaptchaVerifierState]); // Added recaptchaVerifierState to dependencies
 
-    // NEW: Function to reset reCAPTCHA, passed down via context
+    // Function to reset reCAPTCHA, passed down via context
     const resetRecaptcha = useCallback(() => {
         if (recaptchaWidgetIdRef.current !== null && window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
             console.log("App.jsx: Resetting central reCAPTCHA widget with ID.");
@@ -345,6 +377,7 @@ export default function App() {
         } else {
             console.warn("App.jsx: Cannot reset reCAPTCHA: grecaptcha or reset function not available.");
         }
+        setIsRecaptchaReadyForUse(false); // Set to false after reset, will become true on next successful reCAPTCHA callback
     }, []);
 
 
@@ -452,7 +485,7 @@ export default function App() {
             setCurrentUserId(null);
             showMessage('Signed out successfully!', 'success');
         } catch (error) {
-            console.error("Error signing out:", error);
+                console.error("Error signing out:", error);
             showMessage(`Sign Out Failed: ${error.message}`, 'error');
         }
     }, [auth, showMessage]);
@@ -510,16 +543,18 @@ export default function App() {
         linkAnonymousWithEmailPassword,
         linkAnonymousWithApple,
         setShowAuthModal,
-        // NEW: Add centralized reCAPTCHA functions to context
+        // Add centralized reCAPTCHA functions to context
         executeRecaptcha,
         resetRecaptcha,
-        // NEW: Expose the reCAPTCHA readiness state
+        // Expose the reCAPTCHA readiness state
         isRecaptchaReadyForUse,
+        // Pass the recaptchaVerifier instance itself
+        recaptchaVerifier: recaptchaVerifierState, // Pass the state variable
     }), [
         firebaseAppInstance, db, auth, currentUserId, authReady, canvasAppId, showMessage,
         signUpWithEmailPassword, signInWithEmailPassword, signInWithGoogle, signInWithApple, signOutUser,
         linkAnonymousWithEmailPassword, linkAnonymousWithApple, setShowAuthModal,
-        executeRecaptcha, resetRecaptcha, isRecaptchaReadyForUse // Include readiness state in dependencies
+        executeRecaptcha, resetRecaptcha, isRecaptchaReadyForUse, recaptchaVerifierState // Include recaptchaVerifierState in dependencies
     ]);
 
 
@@ -680,6 +715,7 @@ export default function App() {
                 <MessageBox message={message.text} type={message.type} />
 
                 {/* NEW: Hidden div for centralized reCAPTCHA to attach to */}
+                {/* This div must always be present in the DOM for RecaptchaVerifier to initialize correctly */}
                 <div id="recaptcha-container-app" className="hidden"></div>
 
                 <ErrorBoundary>
@@ -693,7 +729,12 @@ export default function App() {
                                 <Route path="/reviews" element={<ReviewsHubPage />} />
                                 <Route path="/test-route" element={<h2 className="text-center text-2xl text-center mt-8">This is a Test Route.</h2>} />
                             </Routes>
-                            {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
+                            {showAuthModal && (
+                                <AuthModal
+                                    key={`${recaptchaKeyCounter}-${isRecaptchaReadyForUse}`} // Force re-mount when reCAPTCHA state changes
+                                    onClose={() => setShowAuthModal(false)}
+                                />
+                            )}
                         </FirebaseContext.Provider>
                     )}
                 </ErrorBoundary>
