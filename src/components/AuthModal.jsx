@@ -1,5 +1,5 @@
 // src/components/AuthModal.jsx
-import React, { useState, useContext, useCallback, useEffect } from 'react';
+import React, { useState, useContext, useCallback, useEffect, useRef } from 'react';
 import { FirebaseContext } from '../App';
 import {
     collection,
@@ -11,8 +11,8 @@ import {
 } from 'firebase/firestore';
 import {
     fetchSignInMethodsForEmail,
-    RecaptchaVerifier, // NEW: Import RecaptchaVerifier
-    signInWithPhoneNumber // NEW: Import signInWithPhoneNumber
+    RecaptchaVerifier,
+    signInWithPhoneNumber
 } from 'firebase/auth';
 
 const AuthModal = ({ onClose }) => {
@@ -22,36 +22,38 @@ const AuthModal = ({ onClose }) => {
         signInWithApple,
         linkAnonymousWithEmailPassword,
         linkAnonymousWithApple,
-        auth, // Access auth instance to check if user is anonymous
-        currentUserId, // To display user ID
+        auth,
+        currentUserId,
         signInWithGoogle,
-        db, // Access db instance from context
-        appId // Access appId from context
+        db,
+        appId
     } = useContext(FirebaseContext);
 
-    const [isLogin, setIsLogin] = useState(true); // Toggle between login and signup
+    const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
-    const [phoneNumber, setPhoneNumber] = useState(''); // State for phone number input
-    const [message, setMessage] = useState(''); // Local message for modal
-    const [messageType, setMessageType] = useState(''); // 'success' or 'error'
-    const [currentStep, setCurrentStep] = useState(0); // State for carousel step (0: email, 1: password/confirm, 2: phoneNumber)
+    const [phoneNumber, setPhoneNumber] = useState('');
+    const [message, setMessage] = useState('');
+    const [messageType, setMessageType] = useState('');
+    const [currentStep, setCurrentStep] = useState(0);
 
-    // NEW states for phone verification
-    const [verificationId, setVerificationId] = useState(null); // Stores confirmationResult after sending OTP
-    const [otp, setOtp] = useState(''); // User entered OTP
-    const [isSendingOtp, setIsSendingOtp] = useState(false); // Loading state for sending OTP
-    const [isVerifyingOtp, setIsVerifyingOtp] = useState(false); // Loading state for verifying OTP
+    const [verificationId, setVerificationId] = useState(null);
+    const [otp, setOtp] = useState('');
+    const [isSendingOtp, setIsSendingOtp] = useState(false);
+    const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
 
-    // State for input validation errors
     const [emailError, setEmailError] = useState('');
     const [passwordError, setPasswordError] = useState('');
     const [confirmPasswordError, setConfirmPasswordError] = useState('');
     const [phoneNumberError, setPhoneNumberError] = useState('');
     const [otpError, setOtpError] = useState('');
-    const [username, setUsername] = useState(''); // Assuming username is part of signup
+    const [username, setUsername] = useState('');
     const [usernameError, setUsernameError] = useState('');
+
+    // Use useRef to manage reCAPTCHA instance and its widget ID
+    const recaptchaVerifierRef = useRef(null);
+    const recaptchaWidgetIdRef = useRef(null);
 
 
     const showLocalMessage = useCallback((text, type) => {
@@ -65,36 +67,34 @@ const AuthModal = ({ onClose }) => {
 
     const isAnonymous = auth?.currentUser?.isAnonymous;
 
-    // Function to check if email already exists
     const checkEmailExists = useCallback(async (emailToCheck) => {
-        console.log("checkEmailExists: Checking email:", emailToCheck); // Debug log
-        console.log("checkEmailExists: Current auth object:", auth); // Debug log
+        console.log("checkEmailExists: Checking email:", emailToCheck);
+        console.log("checkEmailExists: Current auth object:", auth);
         if (!auth) {
             console.error("Firebase Auth not initialized for email check.");
             return false;
         }
         try {
             const signInMethods = await fetchSignInMethodsForEmail(auth, emailToCheck);
-            console.log("checkEmailExists: Sign-in methods for email:", signInMethods); // Debug log
-            return signInMethods.length > 0; // True if any sign-in methods exist for this email
+            console.log("checkEmailExists: Sign-in methods for email:", signInMethods);
+            return signInMethods.length > 0;
         } catch (error) {
             console.error("Error checking email existence:", error);
-            console.error("Full error object:", JSON.stringify(error, null, 2)); // Debug log
+            console.error("Full error object:", JSON.stringify(error, null, 2));
             return false;
         }
     }, [auth]);
 
-    // NEW: useEffect for reCAPTCHA initialization directly in AuthModal
+    // MODIFIED: useEffect for reCAPTCHA initialization and cleanup
     useEffect(() => {
         // Only initialize reCAPTCHA if we are in signup mode, on the phone step,
-        // auth is available, and window.recaptchaVerifier is not yet initialized.
-        if (!isLogin && currentStep === 2 && auth && !window.recaptchaVerifier) {
+        // auth is available, and reCAPTCHA is not yet initialized.
+        if (!isLogin && currentStep === 2 && auth && !recaptchaVerifierRef.current) {
             console.log("AuthModal: Initializing reCAPTCHA Verifier...");
 
             // Ensure grecaptcha script is loaded and ready before creating RecaptchaVerifier
             if (typeof window.grecaptcha === 'undefined' || !window.grecaptcha.ready) {
                 console.warn("AuthModal: grecaptcha script not fully loaded yet. Retrying initialization...");
-                // Re-attempt initialization after a short delay if grecaptcha isn't ready
                 const timeoutId = setTimeout(() => {
                     // Trigger a re-render to re-evaluate this useEffect
                     setCurrentStep(prev => prev); // No actual step change, just to trigger re-render
@@ -103,14 +103,14 @@ const AuthModal = ({ onClose }) => {
             }
 
             window.grecaptcha.ready(() => {
-                if (window.recaptchaVerifier) { // Double-check inside ready callback
+                if (recaptchaVerifierRef.current) { // Double-check inside ready callback
                     console.log("AuthModal: reCAPTCHA Verifier already exists, skipping re-initialization.");
                     return;
                 }
 
                 console.log("AuthModal: grecaptcha is ready. Creating RecaptchaVerifier...");
                 try {
-                    window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+                    const verifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
                         'size': 'invisible', // Invisible reCAPTCHA
                         'callback': (response) => {
                             console.log("AuthModal: reCAPTCHA callback fired (solved):", response);
@@ -119,26 +119,25 @@ const AuthModal = ({ onClose }) => {
                             console.log("AuthModal: reCAPTCHA expired.");
                             showLocalMessage('Verification expired. Please try again.', 'error');
                             setVerificationId(null);
-                            if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                                window.grecaptcha.reset();
-                            }
+                            // Do NOT reset grecaptcha here, let the main cleanup handle it or user re-send
                         },
                         'error-callback': (error) => {
                             console.error("AuthModal: reCAPTCHA error callback:", error);
                             showLocalMessage('Verification error. Please try again.', 'error');
                             setVerificationId(null);
-                            if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                                window.grecaptcha.reset();
-                            }
+                            // Do NOT reset grecaptcha here
                         }
                     });
+                    recaptchaVerifierRef.current = verifier; // Store the verifier instance in the ref
 
-                    window.recaptchaVerifier.render().then((widgetId) => {
+                    verifier.render().then((widgetId) => {
                         console.log("AuthModal: reCAPTCHA rendered with widget ID:", widgetId);
+                        recaptchaWidgetIdRef.current = widgetId; // Store the widget ID in the ref
                     }).catch(error => {
                         console.error("AuthModal: Error rendering reCAPTCHA:", error);
                         showLocalMessage('Failed to initialize verification. Please refresh.', 'error');
-                        delete window.recaptchaVerifier; // Clean up on error
+                        recaptchaVerifierRef.current = null; // Clear ref on error
+                        recaptchaWidgetIdRef.current = null; // Clear widget ID ref on error
                     });
                 } catch (error) {
                     console.error("AuthModal: Error creating RecaptchaVerifier instance:", error);
@@ -147,16 +146,15 @@ const AuthModal = ({ onClose }) => {
             });
         }
 
-        // Cleanup function for reCAPTCHA
+        // Cleanup function for reCAPTCHA when the component unmounts
         return () => {
-            if (window.recaptchaVerifier) {
-                console.log("AuthModal: Cleaning up reCAPTCHA Verifier...");
-                if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                    window.grecaptcha.reset(); // Reset the widget first
+            if (recaptchaVerifierRef.current) {
+                console.log("AuthModal: Cleaning up reCAPTCHA Verifier on component unmount.");
+                if (window.grecaptcha && typeof window.grecaptcha.reset === 'function' && recaptchaWidgetIdRef.current !== null) {
+                    window.grecaptcha.reset(recaptchaWidgetIdRef.current); // Reset the widget
                 }
-                // Firebase's RecaptchaVerifier.clear() is sometimes needed, but deleting global reference is often sufficient for single-page apps
-                // window.recaptchaVerifier.clear(); // Uncomment if issues persist
-                delete window.recaptchaVerifier; // Ensure global reference is removed
+                recaptchaVerifierRef.current = null; // Clear the ref
+                recaptchaWidgetIdRef.current = null; // Clear the widget ID ref
             }
         };
     }, [isLogin, currentStep, auth, showLocalMessage]);
@@ -183,18 +181,23 @@ const AuthModal = ({ onClose }) => {
             showLocalMessage('Authentication service not ready.', 'error');
             return;
         }
-        // Ensure reCAPTCHA is initialized and ready
-        if (!window.recaptchaVerifier || !(window.grecaptcha && typeof window.grecaptcha.render === 'function')) {
+        // Ensure reCAPTCHA is initialized and ready using the ref
+        if (!recaptchaVerifierRef.current) {
             showLocalMessage('Verification system not ready. Please wait a moment and try again.', 'error');
-            console.error("AuthModal: reCAPTCHA verifier not available or grecaptcha not loaded.");
+            console.error("AuthModal: reCAPTCHA verifier not available.");
             return;
         }
 
         setIsSendingOtp(true);
         try {
-            await window.recaptchaVerifier.verify(); // Explicitly trigger reCAPTCHA verification
+            // Explicitly trigger reCAPTCHA verification if it's invisible
+            if (recaptchaVerifierRef.current.size === 'invisible' && recaptchaWidgetIdRef.current !== null) {
+                // Execute the reCAPTCHA to get a token
+                await window.grecaptcha.execute(recaptchaWidgetIdRef.current);
+            }
 
-            const confirmation = await signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
+            // signInWithPhoneNumber will use the reCAPTCHA token internally
+            const confirmation = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifierRef.current);
             setVerificationId(confirmation);
             showLocalMessage('Verification code sent! Please check your phone.', 'success');
         } catch (error) {
@@ -209,9 +212,8 @@ const AuthModal = ({ onClose }) => {
             }
             showLocalMessage(errorMessage, 'error');
             setVerificationId(null);
-            if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                window.grecaptcha.reset();
-            }
+            // Do NOT reset grecaptcha here. The instance is needed for `confirm`.
+            // The reCAPTCHA will automatically reset itself after a successful `execute` or on error/expiration.
         } finally {
             setIsSendingOtp(false);
         }
@@ -252,10 +254,15 @@ const AuthModal = ({ onClose }) => {
             }
 
             showLocalMessage('Phone number verified and account created!', 'success');
-            onClose();
-            if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                window.grecaptcha.reset();
+            // MODIFIED: Centralized reCAPTCHA cleanup after successful verification and modal close.
+            if (recaptchaVerifierRef.current) {
+                if (window.grecaptcha && typeof window.grecaptcha.reset === 'function' && recaptchaWidgetIdRef.current !== null) {
+                    window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+                }
+                recaptchaVerifierRef.current = null;
+                recaptchaWidgetIdRef.current = null;
             }
+            onClose(); // Call onClose to close the modal
 
         } catch (error) {
             console.error("Error verifying OTP:", error);
@@ -264,12 +271,12 @@ const AuthModal = ({ onClose }) => {
                 errorMessage = 'Invalid verification code. Please check the code and try again.';
             } else if (error.code === 'auth/code-expired') {
                 errorMessage = 'The verification code has expired. Please resend the code.';
+            } else if (error.message === 'No reCAPTCHA clients exist.') {
+                 errorMessage = 'Security verification failed. Please try to send the code again.';
             }
             showLocalMessage(errorMessage, 'error');
             setOtpError('Invalid verification code. Please try again.');
-            if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                window.grecaptcha.reset();
-            }
+            // Do NOT reset grecaptcha here on verification error. Let user retry or resend.
         } finally {
             setIsVerifyingOtp(false);
         }
@@ -329,9 +336,10 @@ const AuthModal = ({ onClose }) => {
                 return;
             }
             if (!verificationId) {
-                if (!window.recaptchaVerifier || !(window.grecaptcha && typeof window.grecaptcha.render === 'function')) {
+                // Use ref for recaptchaVerifier and check existence
+                if (!recaptchaVerifierRef.current) {
                     showLocalMessage('Verification system not ready. Please wait a moment and try again.', 'error');
-                    console.error("AuthModal: reCAPTCHA verifier not available or grecaptcha not loaded in handleNextStep.");
+                    console.error("AuthModal: reCAPTCHA verifier not available in handleNextStep.");
                     return;
                 }
                 await handleSendOtp();
@@ -355,8 +363,13 @@ const AuthModal = ({ onClose }) => {
             setCurrentStep(prev => prev - 1);
             setVerificationId(null);
             setOtp('');
-            if (currentStep === 2 && window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                window.grecaptcha.reset();
+            // Only reset grecaptcha if moving *away* from the phone step (i.e., currentStep was 2)
+            if (currentStep === 2 && recaptchaVerifierRef.current) {
+                if (window.grecaptcha && typeof window.grecaptcha.reset === 'function' && recaptchaWidgetIdRef.current !== null) {
+                    window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+                }
+                // Do not clear the refs here, as the component might re-render to step 2 again
+                // and we want the verifier to be ready. The useEffect handles re-initialization.
             }
         }
         console.log("handlePrevStep: Current step AFTER update:", currentStep);
@@ -389,6 +402,14 @@ const AuthModal = ({ onClose }) => {
                 } else {
                     await signInWithEmailPassword(email, password);
                 }
+                // Ensure reCAPTCHA is cleared on successful login
+                if (recaptchaVerifierRef.current) {
+                    if (window.grecaptcha && typeof window.grecaptcha.reset === 'function' && recaptchaWidgetIdRef.current !== null) {
+                        window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+                    }
+                    recaptchaVerifierRef.current = null;
+                    recaptchaWidgetIdRef.current = null;
+                }
             } catch (error) {
                 console.error("Unexpected error during sign-in process:", error);
                 showLocalMessage(`An unexpected error occurred: ${error.message}`, 'error');
@@ -397,9 +418,10 @@ const AuthModal = ({ onClose }) => {
             if (currentStep < 2) {
                 await handleNextStep(e);
             } else if (currentStep === 2 && !verificationId) {
-                if (!window.recaptchaVerifier || !(window.grecaptcha && typeof window.grecaptcha.render === 'function')) {
+                // Use ref for recaptchaVerifier and check existence
+                if (!recaptchaVerifierRef.current) {
                     showLocalMessage('Verification system not ready. Please wait a moment and try again.', 'error');
-                    console.error("AuthModal: reCAPTCHA verifier not available or grecaptcha not loaded in handleAuthAction.");
+                    console.error("AuthModal: reCAPTCHA verifier not available in handleAuthAction.");
                     return;
                 }
                 await handleSendOtp();
@@ -414,6 +436,14 @@ const AuthModal = ({ onClose }) => {
         const user = await signInWithGoogle();
         if (user) {
             onClose();
+            // Ensure reCAPTCHA is cleared on successful sign-in
+            if (recaptchaVerifierRef.current) {
+                if (window.grecaptcha && typeof window.grecaptcha.reset === 'function' && recaptchaWidgetIdRef.current !== null) {
+                    window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+                }
+                recaptchaVerifierRef.current = null;
+                recaptchaWidgetIdRef.current = null;
+            }
         }
     };
 
@@ -421,6 +451,14 @@ const AuthModal = ({ onClose }) => {
         const user = await signInWithApple();
         if (user) {
             onClose();
+            // Ensure reCAPTCHA is cleared on successful sign-in
+            if (recaptchaVerifierRef.current) {
+                if (window.grecaptcha && typeof window.grecaptcha.reset === 'function' && recaptchaWidgetIdRef.current !== null) {
+                    window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+                }
+                recaptchaVerifierRef.current = null;
+                recaptchaWidgetIdRef.current = null;
+            }
         }
     };
 
@@ -442,21 +480,37 @@ const AuthModal = ({ onClose }) => {
         setPhoneNumberError('');
         setOtpError('');
         setUsernameError('');
-        if (window.recaptchaVerifier) {
+
+        // Explicitly clean up reCAPTCHA when toggling auth mode
+        if (recaptchaVerifierRef.current) {
             console.log("AuthModal: Clearing and deleting reCAPTCHA Verifier on mode toggle.");
-            if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-                window.grecaptcha.reset();
+            if (window.grecaptcha && typeof window.grecaptcha.reset === 'function' && recaptchaWidgetIdRef.current !== null) {
+                window.grecaptcha.reset(recaptchaWidgetIdRef.current);
             }
-            delete window.recaptchaVerifier;
+            recaptchaVerifierRef.current = null; // Clear the ref
+            recaptchaWidgetIdRef.current = null; // Clear the widget ID ref
         }
     }, []);
+
+    // Centralized reCAPTCHA cleanup when modal closes
+    const handleCloseAndCleanup = useCallback(() => {
+        if (recaptchaVerifierRef.current) {
+            console.log("AuthModal: Cleaning up reCAPTCHA Verifier on modal close.");
+            if (window.grecaptcha && typeof window.grecaptcha.reset === 'function' && recaptchaWidgetIdRef.current !== null) {
+                window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+            }
+            recaptchaVerifierRef.current = null;
+            recaptchaWidgetIdRef.current = null;
+        }
+        onClose();
+    }, [onClose]);
 
 
     return (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4 font-inter">
             <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md relative animate-scale-in">
                 <button
-                    onClick={onClose}
+                    onClick={handleCloseAndCleanup}
                     className="absolute top-4 right-4 text-gray-500 hover:text-gray-800 text-2xl font-bold transition-transform duration-200 transform hover:scale-110"
                 >
                     &times;
