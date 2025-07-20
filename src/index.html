@@ -41,11 +41,28 @@
     }
     </script>
 
+    <!-- Performance Optimizations: Preload and Preconnect for faster resource loading -->
+    <!-- Preconnect to Google Fonts and Cloudflare CDN for faster resource fetching -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://www.google.com">
+    <link rel="preconnect" href="https://www.gstatic.com">
+
+    <!-- Preload critical CSS and JavaScript files -->
+    <!-- Preload Font Awesome CSS for quicker icon display -->
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" as="style">
+    <!-- Preload Google Fonts CSS for faster font rendering -->
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" as="style">
+    <!-- Preload reCAPTCHA script as it's critical for forms -->
+    <link rel="preload" href="https://www.google.com/recaptcha/api.js?render=explicit" as="script">
+
     <!-- Custom global styles are imported via src/main.jsx (which imports index.css) -->
     <!-- External fonts are imported via index.css -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Font Awesome CDN for icons (if needed, although SVG icons are preferred in React components) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" xintegrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmRjRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <!-- Note on Critical CSS: For further performance gains, consider inlining critical CSS (CSS required for above-the-fold content) directly into the HTML to eliminate render-blocking requests. This is typically handled by build tools. -->
 </head>
 <body class="font-sans antialiased text-gray-900">
     <div id="root"></div>
@@ -54,5 +71,7 @@
     <script type="module" src="/main.jsx"></script>
     <!-- reCAPTCHA API script - REQUIRED for reCAPTCHA to function -->
     <script src="https://www.google.com/recaptcha/api.js?render=explicit" async defer></script>
+
+    <!-- Note on Image Optimization: If 'Express-collage.jpg' or other large images are loaded directly in HTML/CSS, consider using responsive images (srcset/sizes) and modern formats (WebP/AVIF) to reduce file sizes and improve loading times. This is often best managed at the asset pipeline level. -->
 </body>
 </html>
