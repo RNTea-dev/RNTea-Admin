@@ -36,6 +36,7 @@ import {
 // Reintroducing Page Components imports
 import HomePage from './pages/HomePage.jsx';
 import ReviewsHubPage from './pages/ReviewsHubPage.jsx'; // Corrected path
+import MyReviewsDisplay from './components/MyReviewsDisplay.jsx'; // NEW: Import MyReviewsDisplay
 import PrivacyPolicyModal from './components/PrivacyPolicyModal.jsx';
 
 // Reintroducing Reusable Components imports
@@ -96,6 +97,8 @@ export default function App() {
     const [db, setDb] = useState(null);
     const [auth, setAuth] = useState(null);
     const [currentUserId, setCurrentUserId] = useState(null);
+    const [currentUserIsAnonymous, setCurrentUserIsAnonymous] = useState(true); // NEW: Track if user is anonymous
+    const [currentUserProfileName, setCurrentUserProfileName] = useState(null); // NEW: State for user's display name
     const [authReady, setAuthReady] = useState(false);
     const [loadingFirebase, setLoadingFirebase] = useState(true);
     const [message, setMessage] = useState({ text: '', type: '' });
@@ -187,6 +190,8 @@ export default function App() {
                     console.log("App.jsx: onAuthStateChanged - User status changed. User:", user);
                     if (user) {
                         setCurrentUserId(user.uid);
+                        setCurrentUserIsAnonymous(user.isAnonymous); // Set anonymous status
+                        setCurrentUserProfileName(user.displayName); // NEW: Set display name from user object
                     } else {
                         console.log("App.jsx: No user found. Checking for custom token.");
                         let initialAuthToken = null;
@@ -201,15 +206,21 @@ export default function App() {
                             try {
                                 await signInWithCustomToken(authInstance, initialAuthToken);
                                 setCurrentUserId(authInstance.currentUser?.uid);
+                                setCurrentUserIsAnonymous(authInstance.currentUser?.isAnonymous || false); // Set anonymous status
+                                setCurrentUserProfileName(authInstance.currentUser?.displayName); // NEW: Set display name
                                 console.log("App.jsx: Custom token sign-in successful. Current user ID:", authInstance.currentUser?.uid);
                             } catch (error) {
                                 console.error("App.jsx: Error during custom token authentication:", error);
                                 showMessage(`Authentication failed: ${error.message}`, 'error');
                                 setCurrentUserId(null);
+                                setCurrentUserIsAnonymous(true);
+                                setCurrentUserProfileName(null); // NEW: Clear display name
                             }
                         } else {
                             console.log("App.jsx: No custom token found. User remains signed out by default.");
                             setCurrentUserId(null);
+                            setCurrentUserIsAnonymous(true);
+                            setCurrentUserProfileName(null); // NEW: Clear display name
                         }
                     }
                     setAuthReady(true);
@@ -483,6 +494,8 @@ export default function App() {
         try {
             await signOut(auth);
             setCurrentUserId(null);
+            setCurrentUserIsAnonymous(true); // Reset anonymous status on sign out
+            setCurrentUserProfileName(null); // NEW: Clear display name on sign out
             showMessage('Signed out successfully!', 'success');
         } catch (error) {
                 console.error("Error signing out:", error);
@@ -532,6 +545,7 @@ export default function App() {
         db,
         auth,
         currentUserId,
+        currentUserIsAnonymous, // NEW: Pass anonymous status
         authReady,
         appId: canvasAppId || import.meta.env.VITE_FIREBASE_PROJECT_ID,
         showMessage,
@@ -550,11 +564,13 @@ export default function App() {
         isRecaptchaReadyForUse,
         // Pass the recaptchaVerifier instance itself
         recaptchaVerifier: recaptchaVerifierState, // Pass the state variable
+        currentUserDisplayName: currentUserProfileName // Use the new state variable
     }), [
-        firebaseAppInstance, db, auth, currentUserId, authReady, canvasAppId, showMessage,
+        firebaseAppInstance, db, auth, currentUserId, currentUserIsAnonymous, authReady, canvasAppId, showMessage,
         signUpWithEmailPassword, signInWithEmailPassword, signInWithGoogle, signInWithApple, signOutUser,
         linkAnonymousWithEmailPassword, linkAnonymousWithApple, setShowAuthModal,
-        executeRecaptcha, resetRecaptcha, isRecaptchaReadyForUse, recaptchaVerifierState // Include recaptchaVerifierState in dependencies
+        executeRecaptcha, resetRecaptcha, isRecaptchaReadyForUse, recaptchaVerifierState,
+        currentUserProfileName // NEW: Add this dependency
     ]);
 
 
@@ -571,6 +587,7 @@ export default function App() {
     const isLinkActive = useCallback((path) => {
         if (path === '/') return location.pathname === '/';
         if (path === '/reviews') return location.pathname === '/reviews';
+        if (path === '/my-tea') return location.pathname === '/my-tea'; // NEW: Check for /my-tea route
         if (path.startsWith('/#')) {
             const section = path.substring(2);
             return location.pathname === '/' && location.hash === `#${section}`;
@@ -607,6 +624,19 @@ export default function App() {
                                 </span>
                             </Link>
                         </li>
+                        {currentUserId && !currentUserIsAnonymous && ( // NEW: Show My Tea link only if signed in
+                            <li>
+                                <Link
+                                    to="/my-tea"
+                                    className={`group relative overflow-hidden text-lg text-gray-700 font-medium transition duration-300 ease-in-out hover:text-custom-beige ${isLinkActive('/my-tea') ? 'font-bold' : ''}`}
+                                >
+                                    <span className="relative inline-block">
+                                        My Tea
+                                        <span className="absolute left-0 bottom-0 h-0.5 bg-[#CC5500] w-0 transition-all duration-300 group-hover:w-full"></span>
+                                    </span>
+                                </Link>
+                            </li>
+                        )}
                         <li>
                             <Link
                                 to="/#contact"
@@ -682,6 +712,19 @@ export default function App() {
                         <span className="absolute left-0 bottom-0 h-0.5 bg-[#CC5500] w-0 transition-all duration-300 group-hover:w-full"></span>
                     </span>
                 </Link>
+                {currentUserId && !currentUserIsAnonymous && ( // NEW: Show My Tea link in mobile nav
+                    <Link
+                        to="/my-tea"
+                        className="group relative overflow-hidden text-2xl text-gray-800 my-4 transition duration-300 ease-in-out hover:text-custom-beige"
+                        onClick={handleMobileNavLinkClick}
+                        style={{ animationDelay: '0.25s' }}
+                    >
+                        <span className="relative inline-block">
+                            My Tea
+                            <span className="absolute left-0 bottom-0 h-0.5 bg-[#CC5500] w-0 transition-all duration-300 group-hover:w-full"></span>
+                        </span>
+                    </Link>
+                )}
                 <Link
                     to="/#contact"
                     className="group relative overflow-hidden text-2xl text-gray-800 my-4 transition duration-300 ease-in-out hover:text-custom-beige"
@@ -727,6 +770,7 @@ export default function App() {
                                 {console.log(`App.jsx: Route matched for path: ${location.pathname}`)}
                                 <Route path="/" element={<HomePage />} />
                                 <Route path="/reviews" element={<ReviewsHubPage />} />
+                                <Route path="/my-tea" element={<MyReviewsDisplay />} /> {/* NEW: My Tea Route */}
                                 <Route path="/test-route" element={<h2 className="text-center text-2xl text-center mt-8">This is a Test Route.</h2>} />
                             </Routes>
                             {showAuthModal && (
