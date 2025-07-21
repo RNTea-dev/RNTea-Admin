@@ -16,12 +16,23 @@ const MyReviewsDisplay = () => {
         }
 
         setLoadingMyReviews(true);
-        const userReviewsCollectionRef = collection(db, `artifacts/${appId}/userReviews`);
+        // UPDATED: Corrected Firestore collection path to match where ReviewsHubPage stores user reviews.
+        // It should be 'artifacts/{appId}/users/{userId}/myReviews'
+        const userReviewsCollectionRef = collection(db, `artifacts/${appId}/users/${currentUserId}/myReviews`);
         
         // This query requires a composite index on 'userId' (ascending) and 'date' (descending).
-        // The Firebase error message provides a direct link to create this index.
+        // If you encounter a Firebase error about missing indexes, visit the link provided in the console
+        // to create the necessary index in your Firestore console.
         const q = query(
             userReviewsCollectionRef,
+            // The 'where("userId", "==", currentUserId)' clause is technically redundant here
+            // because the collection path already includes the userId.
+            // However, keeping it can act as an extra safety check if desired,
+            // but it's not strictly necessary for this specific path structure.
+            // For optimal performance and rule matching, rely on the path.
+            // For example, if your rules are strict on 'userId' in the path, this filter
+            // might be implicitly handled by the rule itself.
+            // Keeping it for now as it doesn't harm, but be aware of its redundancy.
             where("userId", "==", currentUserId),
             orderBy("date", "desc") 
         );
@@ -33,7 +44,9 @@ const MyReviewsDisplay = () => {
                 fetchedReviews.push({
                     id: doc.id,
                     ...data,
+                    // Ensure date objects are correctly parsed for display
                     date: data.date && typeof data.date.toDate === 'function' ? data.date.toDate() : new Date(data.date),
+                    // Ensure comments are also parsed correctly, handling potential Firestore Timestamp objects
                     comments: data.comments ? data.comments.map(comment => ({
                         ...comment,
                         date: comment.date && typeof comment.date.toDate === 'function' ? comment.date.toDate() : new Date(comment.date)

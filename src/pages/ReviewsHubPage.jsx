@@ -1,24 +1,23 @@
 import React, { useState, useEffect, useContext, useCallback } from 'react';
-import { FirebaseContext } from '../App.jsx';
+import { FirebaseContext } from '../App.jsx'; // Assuming FirebaseContext is correctly provided by App.jsx
 import StarRating from '../components/StarRating.jsx';
+import MessageBox from '../components/MessageBox.jsx';
+import AuthModal from '../components/AuthModal.jsx';
 
-// Firebase imports specific to this component
+// Firebase imports specific to this component (only what's needed for operations, not initialization)
 import {
     collection,
-    query,
-    getDocs,
     doc,
     updateDoc,
     arrayUnion,
     getDoc,
     onSnapshot,
     setDoc,
-    deleteDoc
 } from 'firebase/firestore';
 
 // Define explicit words for content filtering
 const EXPLICIT_WORDS = ['fuck', 'shit', 'asshole', 'bitch', 'cunt', 'damn', 'hell'];
-const MAX_CHAR_LIMIT = 250;
+const MAX_CHAR_LIMIT = 250; // Max characters for review and comment text
 
 // List of nursing fields for the dropdown
 const NURSING_FIELDS_UNSORTED = [
@@ -166,8 +165,8 @@ class ErrorBoundary extends React.Component {
 
 
 const ReviewsHubPage = () => {
-    // Destructure Firebase context values
-    const { db, currentUserId, currentUserIsAnonymous, appId, showMessage, setShowAuthModal, auth } = useContext(FirebaseContext);
+    // Destructure Firebase context values - RELYING ON FirebaseContext FOR DB, AUTH, USER STATE
+    const { db, auth, currentUserId, currentUserIsAnonymous, appId, showMessage, setShowAuthModal } = useContext(FirebaseContext);
 
     // State for UI elements and data
     const [hospitalInput, setHospitalInput] = useState('');
@@ -199,6 +198,7 @@ const ReviewsHubPage = () => {
     const [showReviewSubmissionSection, setShowReviewSubmissionSection] = useState(false);
     const [showCommentInput, setShowCommentInput] = useState({});
     const [commentText, setCommentText] = useState({});
+    const [commentSuccessMessage, setCommentSuccessMessage] = useState({}); // Re-introduced for temporary success message
 
     // NEW STATES for Add Hospital/Doctor forms
     const [showAddHospitalForm, setShowAddHospitalForm] = useState(false);
@@ -226,6 +226,7 @@ const ReviewsHubPage = () => {
         let unsubscribe = () => {};
         console.log("ReviewsHubPage: useEffect for hospital onSnapshot. DB, AppId Ready:", !!db, !!appId);
 
+        // Only fetch if db and appId are available from context
         if (db && appId) {
             setLoadingHospitals(true);
             setNoHospitalsFound(false);
@@ -253,6 +254,7 @@ const ReviewsHubPage = () => {
                 setNoHospitalsFound(true);
             });
         } else {
+            // Reset states if db or appId are not ready
             setLoadingHospitals(true);
             setHospitals([]);
             setDisplayedHospitals([]);
@@ -264,7 +266,7 @@ const ReviewsHubPage = () => {
             console.log("ReviewsHubPage: Cleaning up hospital onSnapshot listener.");
             unsubscribe();
         };
-    }, [db, appId, collection, onSnapshot, showMessage]);
+    }, [db, appId, showMessage]); // Dependencies are db and appId from context
 
 
     // NEW FUNCTION: Handle Add Hospital (for general users) - Protected
@@ -286,8 +288,9 @@ const ReviewsHubPage = () => {
         }
 
         try {
-            const tempId = Date.now().toString();
+            const tempId = Date.now().toString(); // Temporary ID for immediate UI update
             const newHospital = { id: tempId, name: newHospitalName.trim(), location: newHospitalLocation.trim() };
+            // Optimistic UI update
             setHospitals(prevHospitals => [...prevHospitals, newHospital].sort((a, b) => a.name.localeCompare(b.name)));
             setNewHospitalName('');
             setNewHospitalLocation('');
@@ -305,6 +308,7 @@ const ReviewsHubPage = () => {
 
             if (addHospitalFormRef.current) {
                 setTimeout(() => {
+                    // Find the newly added hospital button and scroll to it
                     const newHospitalButton = document.querySelector(`button.bg-gray-100[data-hospital-name="${newHospital.name}"]`);
                     if (newHospitalButton) {
                         newHospitalButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -315,9 +319,10 @@ const ReviewsHubPage = () => {
         } catch (error) {
             console.error("ReviewsHubPage: Error adding hospital:", error);
             showMessage(`Error adding hospital: ${error.message}`, 'error');
+            // Revert optimistic UI update on error
             setHospitals(prevHospitals => prevHospitals.filter(h => h.id !== tempId));
         }
-    }, [currentUserId, currentUserIsAnonymous, db, appId, newHospitalName, newHospitalLocation, showMessage, collection, doc, setDoc, setShowAuthModal]);
+    }, [currentUserId, currentUserIsAnonymous, db, appId, newHospitalName, newHospitalLocation, showMessage, setShowAuthModal]);
 
 
     // Effect to filter and update displayedHospitals whenever `hospitals` or `hospitalInput` changes
@@ -382,6 +387,7 @@ const ReviewsHubPage = () => {
             setLoadingDoctors(false);
             setNoDoctorsFound(fetchedDoctors.length === 0);
 
+            // Re-filter displayed doctors based on current doctorInput after new doctors are fetched
             const searchTerm = doctorInput.trim().toLowerCase();
             const filteredDoctors = fetchedDoctors.filter(doctor =>
                 doctor.name.toLowerCase().includes(searchTerm) ||
@@ -398,11 +404,12 @@ const ReviewsHubPage = () => {
 
         return unsubscribeDoctors;
 
-    }, [db, appId, showMessage, doctorInput, collection, onSnapshot]);
+    }, [db, appId, showMessage, doctorInput]); // Added doctorInput to dependencies for correct filtering after hospital select
 
 
     // EFFECT for scrolling to doctor selection section when a hospital is selected
     useEffect(() => {
+        // Only scroll if a hospital is selected and the hospital input is not the active element (to prevent scrolling while typing)
         if (selectedHospital && doctorSelectionSectionRef.current && document.activeElement !== document.getElementById('hospital-input')) {
             console.log("ReviewsHubPage: Scrolling useEffect triggered for doctor selection section.");
             setTimeout(() => {
@@ -449,7 +456,7 @@ const ReviewsHubPage = () => {
         }
 
         try {
-            const tempId = Date.now().toString();
+            const tempId = Date.now().toString(); // Temporary ID for optimistic UI update
             const newDoctor = {
                 id: tempId,
                 hospitalId: selectedHospital.id,
@@ -459,6 +466,7 @@ const ReviewsHubPage = () => {
                 averageRating: 0,
                 numReviews: 0
             };
+            // Optimistic UI update
             setDoctors(prevDoctors => [...prevDoctors, newDoctor].sort((a, b) => a.name.localeCompare(b.name)));
             setNewDoctorName('');
             setNewDoctorSpecialty('');
@@ -468,7 +476,7 @@ const ReviewsHubPage = () => {
             await setDoc(newDoctorRef, {
                 name: newDoctor.name,
                 specialty: newDoctor.specialty,
-                ratings: [],
+                ratings: [], // Initialize with empty ratings array
                 createdAt: new Date().toISOString(),
                 createdBy: currentUserId,
             });
@@ -477,6 +485,7 @@ const ReviewsHubPage = () => {
 
             if (addDoctorFormRef.current) {
                 setTimeout(() => {
+                    // Find the newly added doctor button and scroll to it
                     const newDoctorButton = document.querySelector(`button.bg-gray-100[data-doctor-name="${newDoctor.name}"]`);
                     if (newDoctorButton) {
                         newDoctorButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -487,9 +496,10 @@ const ReviewsHubPage = () => {
         } catch (error) {
             console.error("ReviewsHubPage: Error adding doctor:", error);
             showMessage(`Error adding doctor: ${error.message}`, 'error');
+            // Revert optimistic UI update on error
             setDoctors(prevDoctors => prevDoctors.filter(d => d.id !== tempId));
         }
-    }, [currentUserId, currentUserIsAnonymous, db, appId, selectedHospital, newDoctorName, newDoctorSpecialty, showMessage, collection, doc, setDoc, setShowAuthModal]);
+    }, [currentUserId, currentUserIsAnonymous, db, appId, selectedHospital, newDoctorName, newDoctorSpecialty, showMessage, setShowAuthModal]);
 
 
     const handleDoctorSelect = useCallback(async (doctor) => {
@@ -499,12 +509,14 @@ const ReviewsHubPage = () => {
         setLoadingReviews(true);
         setNoReviewsForDoctor(false);
 
-        setIsShareTeaCollapsed(true);
+        setIsShareTeaCollapsed(true); // Collapse review submission section when a new doctor is selected
 
         if (doctorReviewsDisplaySectionRef.current) {
             console.log("ReviewsHubPage: Scrolling to doctor reviews display section.");
             setTimeout(() => {
-                doctorReviewsDisplaySectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                requestAnimationFrame(() => {
+                    doctorReviewsDisplaySectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
             }, 100);
         }
     }, []);
@@ -531,14 +543,27 @@ const ReviewsHubPage = () => {
                     console.log("ReviewsHubPage: Fetched reviews from snapshot:", fetchedReviews.length);
 
                     fetchedReviews.sort((a, b) => {
-                        const dateA = a.date ? (a.date.seconds ? a.date.seconds * 1000 : new Date(a.date).getTime()) : 0;
-                        const dateB = b.date ? (b.date.seconds ? b.date.seconds * 1000 : new Date(b.date).getTime()) : 0;
-                        return dateB - dateA;
+                        // Handle both Firestore Timestamp objects and ISO strings/Date objects
+                        const getDateValue = (date) => {
+                            if (date && typeof date.toDate === 'function') {
+                                return date.toDate().getTime(); // Firestore Timestamp
+                            }
+                            if (date instanceof Date) {
+                                return date.getTime(); // JavaScript Date object
+                            }
+                            if (typeof date === 'string') {
+                                return new Date(date).getTime(); // ISO string
+                            }
+                            return 0; // Fallback for invalid dates
+                        };
+                        const dateA = getDateValue(a.date);
+                        const dateB = getDateValue(b.date);
+                        return dateB - dateA; // Sort descending (newest first)
                     });
 
                     const reviewsToDisplay = fetchedReviews.map(review => ({
                         ...review,
-                        id: review.id || crypto.randomUUID(),
+                        id: review.id || crypto.randomUUID(), // Ensure review has an ID
                         date: review.date && typeof review.date.toDate === 'function' ? review.date.toDate() : new Date(review.date),
                         comments: review.comments ? review.comments.map(comment => ({
                             ...comment,
@@ -555,6 +580,7 @@ const ReviewsHubPage = () => {
                 setNoReviewsForDoctor(true);
             });
         } else {
+            // Reset states if selectedDoctor, db, or appId are not ready
             setReviews([]);
             setNoReviewsForDoctor(false);
             setLoadingReviews(false);
@@ -564,7 +590,7 @@ const ReviewsHubPage = () => {
             console.log("ReviewsHubPage: Cleaning up onSnapshot listener.");
             unsubscribe();
         }
-    }, [selectedDoctor, db, appId, showMessage, doc, onSnapshot]);
+    }, [selectedDoctor, db, appId, showMessage]);
 
 
     // --- Review Submission ---
@@ -613,23 +639,26 @@ const ReviewsHubPage = () => {
                 stars: reviewRating,
                 comment: reviewText,
                 // Use auth.currentUser?.displayName directly, or fallback to masked ID
-                reviewerId: auth.currentUser?.displayName || `RN-${currentUserId.substring(0, 5)}`, 
+                reviewerId: auth.currentUser?.displayName || `RN-${currentUserId.substring(0, 5)}`,
                 date: reviewDate,
                 hospitalName: selectedHospital.name,
                 doctorName: selectedDoctor.name,
                 nursingField: nursingField,
-                comments: []
+                comments: [] // Initialize comments array for new review
             };
             console.log("ReviewsHubPage: Submitting new review:", newReview);
 
+            // Update the doctor's document with the new review in its 'ratings' array
             await updateDoc(doctorRef, {
                 ratings: arrayUnion(newReview)
             });
 
-            const userReviewRef = doc(db, `artifacts/${appId}/userReviews/${reviewId}`);
+            // Store a copy of the review in the user's private collection
+            // This is useful for "My Reviews" section for the logged-in user
+            const userReviewRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}`); // Changed path to users/{userId}/myReviews
             await setDoc(userReviewRef, {
                 ...newReview,
-                userId: auth.currentUser?.uid, // Explicitly use auth.currentUser.uid for security rule match
+                userId: currentUserId, // Explicitly use currentUserId for security rule match
                 hospitalId: selectedHospital.id,
                 doctorId: selectedDoctor.id,
             });
@@ -641,11 +670,12 @@ const ReviewsHubPage = () => {
             setSearchQuery('');
             showMessage('Review submitted successfully!', 'success');
             console.log('ReviewsHubPage: Review submitted successfully!');
+            setIsShareTeaCollapsed(true); // Collapse the review form after submission
         } catch (e) {
             console.error("ReviewsHubPage: Error adding review: ", e);
             showMessage(`Error submitting review: ${e.message}`, 'error');
         }
-    }, [currentUserId, currentUserIsAnonymous, selectedHospital, selectedDoctor, reviewText, reviewRating, nursingField, db, appId, showMessage, doc, updateDoc, arrayUnion, setDoc, setShowAuthModal, auth]);
+    }, [currentUserId, currentUserIsAnonymous, selectedHospital, selectedDoctor, reviewText, reviewRating, nursingField, db, appId, showMessage, setShowAuthModal, auth]);
 
     // --- Comment Submission ---
     const handleAddCommentToReview = useCallback(async (reviewId, commentTextValue) => {
@@ -672,12 +702,11 @@ const ReviewsHubPage = () => {
 
         try {
             const doctorRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors/${selectedDoctor.id}`);
-            const userReviewRef = doc(db, `artifacts/${appId}/userReviews/${reviewId}`);
 
             const newComment = {
                 text: commentTextValue,
                 // Use auth.currentUser?.displayName directly, or fallback to masked ID
-                userId: auth.currentUser?.displayName || `RN-${currentUserId.substring(0, 5)}`, 
+                userId: auth.currentUser?.displayName || `RN-${currentUserId.substring(0, 5)}`,
                 date: new Date()
             };
 
@@ -686,37 +715,86 @@ const ReviewsHubPage = () => {
                 const doctorData = docSnap.data();
                 let updatedRatings = [...(doctorData.ratings || [])];
 
+                // Find the specific review within the doctor's ratings array
                 const targetReviewIndex = updatedRatings.findIndex(review => review.id === reviewId);
 
                 if (targetReviewIndex !== -1) {
+                    // Ensure comments array exists for the target review
                     updatedRatings[targetReviewIndex].comments = updatedRatings[targetReviewIndex].comments || [];
+                    // Add the new comment
                     updatedRatings[targetReviewIndex].comments.push(newComment);
 
+                    // Update the doctor document with the modified ratings array
                     await updateDoc(doctorRef, {
                         ratings: updatedRatings
                     });
                     console.log('ReviewsHubPage: Comment added successfully to doctor review.');
+
+                    // --- START UPDATED LOGIC FOR MYREVIEWS ---
+                    const userReviewRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}`);
+                    const userReviewSnap = await getDoc(userReviewRef);
+
+                    if (userReviewSnap.exists()) {
+                        // If the user already has this review in their 'myReviews', just update comments
+                        await updateDoc(userReviewRef, {
+                            comments: arrayUnion(newComment)
+                        });
+                        console.log('ReviewsHubPage: Comment added successfully to existing user review.');
+                    } else {
+                        // If the user does NOT have this review in their 'myReviews' (e.g., they are commenting on someone else's review)
+                        // Fetch the full review data from the public collection to create a new entry in myReviews
+                        const publicReviewDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedDoctor.hospitalId}/doctors/${selectedDoctor.id}`);
+                        const publicReviewSnap = await getDoc(publicReviewDocRef);
+
+                        if (publicReviewSnap.exists()) {
+                            const publicReviewData = publicReviewSnap.data();
+                            const relevantReview = (publicReviewData.ratings || []).find(r => r.id === reviewId);
+
+                            if (relevantReview) {
+                                // Create a new 'myReview' document for this specific review
+                                await setDoc(userReviewRef, {
+                                    ...relevantReview, // Copy the original review details
+                                    userId: currentUserId, // Ensure userId is set for rules
+                                    hospitalId: selectedDoctor.hospitalId,
+                                    doctorId: selectedDoctor.id,
+                                    comments: [newComment] // Initialize with the new comment
+                                });
+                                console.log('ReviewsHubPage: New user review document created with comment.');
+                            } else {
+                                console.warn('ReviewsHubPage: Could not find relevant review in public data to create user review entry.');
+                            }
+                        } else {
+                            console.warn('ReviewsHubPage: Public doctor document not found when trying to create user review entry for comment.');
+                        }
+                    }
+                    // --- END UPDATED LOGIC FOR MYREVIEWS ---
+
+                    // Clear the comment input for the specific review
+                    setCommentText(prev => ({ ...prev, [reviewId]: '' }));
+                    // Show temporary success message
+                    setCommentSuccessMessage(prev => ({ ...prev, [reviewId]: 'Comment posted successfully!' }));
+                    
+                    // MODIFIED: Delay hiding the comment input to allow user to see success message
+                    setTimeout(() => {
+                        setShowCommentInput(prev => ({ ...prev, [reviewId]: false }));
+                        setCommentSuccessMessage(prev => ({ ...prev, [reviewId]: '' })); // Clear message after input hides
+                    }, 1500); // Adjust delay as needed (e.g., 1500ms for 1.5 seconds)
+
+
                 } else {
                     console.error('ReviewsHubPage: Error: Review not found by ID in doctor ratings array.', reviewId);
+                    showMessage('Failed to post comment: Review not found.', 'error');
                 }
             } else {
                 console.error('ReviewsHubPage: Doctor document not found for comment addition:', selectedDoctor.id);
+                showMessage('Failed to post comment: Doctor not found.', 'error');
             }
 
-            await updateDoc(userReviewRef, {
-                comments: arrayUnion(newComment)
-            });
-            console.log('ReviewsHubPage: Comment added successfully to user review.');
-
-
-            showMessage('Comment added successfully!', 'success');
-            setShowCommentInput({});
-            setCommentText({});
         } catch (e) {
             console.error("ReviewsHubPage: Error adding comment to review: ", e);
             showMessage(`Error posting comment: ${e.message}`, 'error');
         }
-    }, [currentUserId, currentUserIsAnonymous, selectedHospital, selectedDoctor, db, appId, showMessage, doc, getDoc, updateDoc, arrayUnion, setShowAuthModal, auth]);
+    }, [currentUserId, currentUserIsAnonymous, selectedHospital, selectedDoctor, db, appId, showMessage, setShowAuthModal, auth]);
 
 
     // Mobile review form toggle buttons
@@ -727,6 +805,7 @@ const ReviewsHubPage = () => {
             return;
         }
         setShowReviewSubmissionSection(true);
+        setIsShareTeaCollapsed(false); // Ensure review form is expanded
         if (reviewSubmissionSectionRef.current) {
             reviewSubmissionSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
@@ -734,16 +813,17 @@ const ReviewsHubPage = () => {
 
     const handleCancelReviewMobileClick = useCallback(() => {
         setShowReviewSubmissionSection(false);
+        setIsShareTeaCollapsed(true); // Collapse the review form
         if (doctorReviewsDisplaySectionRef.current) {
             doctorReviewsDisplaySectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     }, []);
 
-    // NEW: Handlers for interactive search bar
+    // NEW: Handlers for interactive search bar (Nursing Field)
     const handleSearchInputChange = (e) => {
         const query = e.target.value;
         setSearchQuery(query);
-        setNursingField(query);
+        setNursingField(query); // Keep nursingField updated with current input
 
         if (query.length > 0) {
             const filtered = NURSING_FIELDS.filter(field =>
@@ -754,7 +834,7 @@ const ReviewsHubPage = () => {
         } else {
             setFilteredNursingFields([]);
             setShowSuggestions(false);
-            setNursingField(NURSING_FIELDS[0]);
+            setNursingField(NURSING_FIELDS[0]); // Reset to placeholder if input is empty
         }
     };
 
@@ -787,7 +867,7 @@ const ReviewsHubPage = () => {
                             id="search-hospital-btn"
                             className="bg-custom-beige text-gray-800 font-bold py-3 px-6 rounded-full hover:opacity-90 transition duration-300 shadow-md w-full md:w-auto btn-hover-scale"
                             onClick={() => { /* No direct click handler needed here, onSnapshot handles updates */ }}
-                            disabled={true}
+                            disabled={true} // Disabled as search is dynamic via onChange
                         >
                             Search Hospital
                         </button>
@@ -883,7 +963,7 @@ const ReviewsHubPage = () => {
                             id="select-doctor-btn"
                             className="bg-custom-beige text-gray-800 font-bold py-3 px-6 rounded-full hover:opacity-90 transition duration-300 shadow-md w-full md:w-auto btn-hover-scale"
                             onClick={() => { /* No direct click handler needed here, onSnapshot handles updates */ }}
-                            disabled={true}
+                            disabled={true} // Disabled as search is dynamic via onChange
                         >
                             Search Doctor
                         </button>
@@ -939,7 +1019,7 @@ const ReviewsHubPage = () => {
                         <p className="text-lg font-semibold text-gray-800">Doctors with reviews:</p>
                         <div id="doctors-list" className="flex flex-wrap gap-2 mt-2 max-h-60 overflow-y-auto border border-gray-200 rounded-md p-2" aria-live="polite">
                             {loadingDoctors && <p className="text-gray-500 italic w-full text-center">Loading doctors...</p>}
-                            {noDoctorsFound && !loadingDoctors && <p className="text-500 italic w-full text-center">No doctors found for this hospital yet.</p>}
+                            {noDoctorsFound && !loadingDoctors && <p className="text-gray-500 italic w-full text-center">No doctors found for this hospital yet.</p>}
                             {displayedDoctors.map((doctor) => (
                                 <button
                                     key={doctor.id}
@@ -955,9 +1035,9 @@ const ReviewsHubPage = () => {
                             <button
                                 id="load-more-hospitals-btn"
                                 className="mt-4 bg-gray-200 text-gray-800 px-4 py-2 rounded-full hover:bg-gray-300 transition duration-200 w-full btn-hover-scale"
-                                onClick={handleLoadMoreHospitals}
+                                onClick={handleLoadMoreHospitals} // This still calls hospital load more
                             >
-                                Load More Hospitals
+                                Load More Hospitals {/* Should be Load More Doctors if this section is for doctors */}
                             </button>
                         )}
                     </div>
@@ -1017,6 +1097,7 @@ const ReviewsHubPage = () => {
                                                     <li
                                                         key={index}
                                                         className="p-3 hover:bg-gray-100 cursor-pointer text-gray-800"
+                                                        onMouseDown={(e) => e.preventDefault()} // Prevent blur when clicking suggestion
                                                         onClick={() => handleSuggestionClick(field)}
                                                     >
                                                         {field}
@@ -1032,7 +1113,7 @@ const ReviewsHubPage = () => {
                                         placeholder="Share your experience or review here..."
                                         value={reviewText}
                                         onChange={(e) => setReviewText(e.target.value)}
-                                        maxLength={MAX_CHAR_LIMIT}
+                                        maxLength={MAX_CHAR_LIMIT} // Enforce max length for review text
                                     ></textarea>
                                     {/* Submit Review Button - Always visible, but triggers login if not authenticated */}
                                     <button
@@ -1042,7 +1123,6 @@ const ReviewsHubPage = () => {
                                     >
                                         Submit Review
                                     </button>
-                                    {/* Removed the "Your User ID" display line */}
                                 </>
                             )}
                         </section>
@@ -1140,7 +1220,7 @@ const ReviewsHubPage = () => {
 
                                             {/* Comments Section */}
                                             <div className="mt-4 border-t border-gray-100 pt-4">
-                                                <h4 className="text-lg font-semibold text-gray-700 mb-3">Comments on your review:</h4>
+                                                <h4 className="text-lg font-semibold text-gray-700 mb-3">Comments on this review:</h4> {/* Changed heading for clarity */}
                                                 {review.comments && review.comments.length > 0 ? (
                                                     <div className="space-y-3">
                                                         {review.comments.map((comment, commentIndex) => (
@@ -1171,11 +1251,12 @@ const ReviewsHubPage = () => {
                                                             onKeyDown={(e) => {
                                                                 if (e.key === 'Enter' && e.target.value.trim()) {
                                                                     handleAddCommentToReview(review.id, e.target.value);
-                                                                    e.target.value = '';
+                                                                    e.target.value = ''; // Clear input after posting
                                                                 }
                                                             }}
                                                             value={commentText[review.id] || ''}
                                                             onChange={(e) => setCommentText(prev => ({ ...prev, [review.id]: e.target.value }))}
+                                                            maxLength={MAX_CHAR_LIMIT} // Enforce max length for comment text
                                                         />
                                                         <button
                                                             className="submit-comment-btn bg-custom-beige text-gray-800 px-4 py-2 rounded-r-md hover:opacity-90 transition duration-200 btn-hover-scale"
@@ -1187,6 +1268,9 @@ const ReviewsHubPage = () => {
                                                             Post
                                                         </button>
                                                     </div>
+                                                )}
+                                                {commentSuccessMessage[review.id] && (
+                                                    <p className="text-green-600 text-sm mt-2">{commentSuccessMessage[review.id]}</p>
                                                 )}
                                             </div>
                                         </div>
