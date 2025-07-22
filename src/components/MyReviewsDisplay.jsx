@@ -1,18 +1,15 @@
 // src/components/MyReviewsDisplay.jsx
 import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { FirebaseContext } from '../App.jsx';
-import { 
-    collection, 
-    query, 
-    where, 
-    onSnapshot, 
-    doc, // Added for doc reference
-    updateDoc, // Added for updating document
-    arrayUnion, // Added for adding to array (likes)
-    arrayRemove, // Added for removing from array (unlikes)
-    getDoc // Added for fetching individual review for like toggle
+import {
+    collection,
+    query,
+    where,
+    onSnapshot,
+    doc,
+    setDoc, // Used for setting like documents in private collection
+    deleteDoc, // Used for deleting like documents in private collection
 } from 'firebase/firestore';
-// import StarRating from './StarRating.jsx'; // Removed StarRating import as it's no longer used
 
 const MyReviewsDisplay = () => {
     const { db, currentUserId, appId, showMessage, setShowAuthModal, currentUserIsAnonymous } = useContext(FirebaseContext);
@@ -20,45 +17,102 @@ const MyReviewsDisplay = () => {
     const [loadingMyReviews, setLoadingMyReviews] = useState(true);
 
     useEffect(() => {
+        let unsubscribeReviews = () => {};
+        const unsubscribeComments = {}; // To store unsubscribe functions for comments
+        const unsubscribeLikes = {}; // To store unsubscribe functions for likes
+
         if (!db || !appId || !currentUserId) {
             setLoadingMyReviews(false);
             return;
         }
 
         setLoadingMyReviews(true);
-        // Corrected Firestore collection path to match where ReviewsHubPage stores user reviews.
-        // It should be 'artifacts/{appId}/users/{userId}/myReviews'
         const userReviewsCollectionRef = collection(db, `artifacts/${appId}/users/${currentUserId}/myReviews`);
-        
-        // Removed orderBy as per previous instruction to avoid potential index issues.
-        // Data will be sorted in memory if needed.
+
         const q = query(
             userReviewsCollectionRef,
-            where("userId", "==", currentUserId) // This clause is essential for security rules
+            where("userId", "==", currentUserId)
         );
 
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        unsubscribeReviews = onSnapshot(q, (querySnapshot) => {
+            console.log("MyReviewsDisplay: onSnapshot triggered for user reviews.");
             const fetchedReviews = [];
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
+            const newUnsubscribeComments = {};
+            const newUnsubscribeLikes = {};
+
+            querySnapshot.forEach((reviewDoc) => {
+                const reviewData = reviewDoc.data();
+                const reviewId = reviewDoc.id;
+
+                // Set up onSnapshot for comments subcollection of this review
+                const commentsColRef = collection(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}/comments`);
+                newUnsubscribeComments[reviewId] = onSnapshot(commentsColRef, (commentsSnapshot) => {
+                    const comments = commentsSnapshot.docs.map(commentDoc => ({
+                        id: commentDoc.id,
+                        ...commentDoc.data(),
+                        date: commentDoc.data().date && typeof commentDoc.data().date.toDate === 'function' ? commentDoc.data().date.toDate() : new Date(commentDoc.data().date)
+                    }));
+
+                    // Update the specific review in the myReviews state with new comments
+                    setMyReviews(prevReviews => {
+                        const updatedReviews = prevReviews.map(r =>
+                            r.id === reviewId ? { ...r, comments: comments } : r
+                        );
+                        // If the review is new and not yet in state, add it (edge case for initial load)
+                        if (!updatedReviews.some(r => r.id === reviewId)) {
+                             return [...updatedReviews, { ...reviewData, id: reviewId, comments, likes: [] }].sort((a, b) => (b.date ? b.date.getTime() : 0) - (a.date ? a.date.getTime() : 0));
+                        }
+                        return updatedReviews;
+                    });
+                });
+
+                // Set up onSnapshot for likes subcollection of this review
+                const likesColRef = collection(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}/likes`);
+                newUnsubscribeLikes[reviewId] = onSnapshot(likesColRef, (likesSnapshot) => {
+                    const likes = likesSnapshot.docs.map(likeDoc => likeDoc.id); // Store just the userId as the like document ID
+
+                    // Update the specific review in the myReviews state with new likes
+                    setMyReviews(prevReviews => {
+                        const updatedReviews = prevReviews.map(r =>
+                            r.id === reviewId ? { ...r, likes: likes } : r
+                        );
+                        // If the review is new and not yet in state, add it (edge case for initial load)
+                        if (!updatedReviews.some(r => r.id === reviewId)) {
+                            return [...updatedReviews, { ...reviewData, id: reviewId, comments: [], likes }].sort((a, b) => (b.date ? b.date.getTime() : 0) - (a.date ? a.date.getTime() : 0));
+                        }
+                        return updatedReviews;
+                    });
+                });
+
+                // Add initial review data to fetchedReviews array (comments and likes will be updated by their own listeners)
                 fetchedReviews.push({
-                    id: doc.id,
-                    ...data,
-                    // Ensure date objects are correctly parsed for display
-                    date: data.date && typeof data.date.toDate === 'function' ? data.date.toDate() : new Date(data.date),
-                    // Ensure comments are also parsed correctly, handling potential Firestore Timestamp objects
-                    comments: data.comments ? data.comments.map(comment => ({
-                        ...comment,
-                        date: comment.date && typeof comment.date.toDate === 'function' ? comment.date.toDate() : new Date(comment.date)
-                    })) : [],
-                    likes: data.likes || [] // Ensure likes array exists and is initialized
+                    id: reviewId,
+                    ...reviewData,
+                    date: reviewData.date && typeof reviewData.date.toDate === 'function' ? reviewData.date.toDate() : new Date(reviewData.date),
+                    comments: [], // Initialize empty, will be populated by comments onSnapshot
+                    likes: [] // Initialize empty, will be populated by likes onSnapshot
                 });
             });
-            // Sort reviews by date in descending order (newest first) in memory
-            fetchedReviews.sort((a, b) => b.date.getTime() - a.date.getTime());
-            setMyReviews(fetchedReviews);
+
+            // Clean up old listeners that are no longer needed
+            Object.keys(unsubscribeComments).forEach(id => {
+                if (!newUnsubscribeComments[id]) {
+                    unsubscribeComments[id]();
+                }
+            });
+            Object.keys(unsubscribeLikes).forEach(id => {
+                if (!newUnsubscribeLikes[id]) {
+                    unsubscribeLikes[id]();
+                }
+            });
+            Object.assign(unsubscribeComments, newUnsubscribeComments);
+            Object.assign(unsubscribeLikes, newUnsubscribeLikes);
+
+            fetchedReviews.sort((a, b) => (b.date ? b.date.getTime() : 0) - (a.date ? a.date.getTime() : 0));
+            setMyReviews(fetchedReviews); // Set initial reviews without comments/likes
             setLoadingMyReviews(false);
             console.log("MyReviewsDisplay: Fetched user reviews:", fetchedReviews.length);
+
         }, (error) => {
             console.error("MyReviewsDisplay: Error fetching user's reviews:", error);
             showMessage('Error loading your reviews.', 'error');
@@ -66,8 +120,10 @@ const MyReviewsDisplay = () => {
         });
 
         return () => {
-            console.log("MyReviewsDisplay: Cleaning up onSnapshot listener.");
-            unsubscribe();
+            console.log("MyReviewsDisplay: Cleaning up onSnapshot listeners.");
+            unsubscribeReviews();
+            Object.values(unsubscribeComments).forEach(unsub => unsub());
+            Object.values(unsubscribeLikes).forEach(unsub => unsub());
         };
     }, [db, appId, currentUserId, showMessage]);
 
@@ -86,73 +142,29 @@ const MyReviewsDisplay = () => {
         }
 
         try {
-            // Reference to the public doctor document containing all reviews
-            const doctorRef = doc(db, `artifacts/${appId}/public/data/hospitals/${hospitalId}/doctors/${doctorId}`);
-            const doctorDocSnap = await getDoc(doctorRef);
+            // Reference to the public like document (using userId as the ID)
+            const publicLikeDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${hospitalId}/doctors/${doctorId}/reviews/${reviewId}/likes/${currentUserId}`);
+            const publicLikeSnap = await getDoc(publicLikeDocRef);
 
-            if (doctorDocSnap.exists()) {
-                const doctorData = doctorDocSnap.data();
-                let updatedRatings = [...(doctorData.ratings || [])];
-                const targetReviewIndex = updatedRatings.findIndex(review => review.id === reviewId);
+            // Reference to the private like document (using userId as the ID)
+            const privateLikeDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}/likes/${currentUserId}`);
 
-                if (targetReviewIndex !== -1) {
-                    let currentLikes = updatedRatings[targetReviewIndex].likes || [];
-                    const userHasLiked = currentLikes.includes(currentUserId);
-
-                    if (userHasLiked) {
-                        // Unlike the review
-                        updatedRatings[targetReviewIndex].likes = currentLikes.filter(uid => uid !== currentUserId);
-                        showMessage('Review unliked.', 'info');
-                    } else {
-                        // Like the review
-                        updatedRatings[targetReviewIndex].likes = [...currentLikes, currentUserId];
-                        showMessage('Review liked!', 'success');
-                    }
-
-                    // Update the public doctor document with the modified ratings array
-                    await updateDoc(doctorRef, {
-                        ratings: updatedRatings
-                    });
-                    console.log('MyReviewsDisplay: Public doctor document updated with new like status.');
-
-                    // Also update the user's private copy of the review in myReviews
-                    const userReviewRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}`);
-                    const userReviewSnap = await getDoc(userReviewRef);
-
-                    if (userReviewSnap.exists()) {
-                        // If the user has this review in their 'myReviews', update its likes
-                        if (userHasLiked) {
-                            await updateDoc(userReviewRef, {
-                                likes: arrayRemove(currentUserId)
-                            });
-                        } else {
-                            await updateDoc(userReviewRef, {
-                                likes: arrayUnion(currentUserId)
-                            });
-                        }
-                        console.log('MyReviewsDisplay: User private review updated with new like status.');
-                    } else {
-                        // This case should ideally not happen if the review is in myReviews,
-                        // but as a fallback, create the entry if it's missing.
-                        const publicReviewData = updatedRatings[targetReviewIndex];
-                        await setDoc(userReviewRef, {
-                            ...publicReviewData,
-                            userId: currentUserId,
-                            hospitalId: hospitalId,
-                            doctorId: doctorId,
-                            likes: publicReviewData.likes // Ensure the likes array is copied correctly
-                        });
-                        console.log('MyReviewsDisplay: New user review document created for liked review (fallback).');
-                    }
-
-                } else {
-                    console.error('MyReviewsDisplay: Error: Review not found by ID in doctor ratings array for liking.', reviewId);
-                    showMessage('Failed to process like: Review not found.', 'error');
-                }
+            if (publicLikeSnap.exists()) {
+                // User has already liked, so unlike (delete the like document from public and private)
+                await deleteDoc(publicLikeDocRef);
+                await deleteDoc(privateLikeDocRef); // Ensure private copy is also removed
+                showMessage('Review unliked.', 'info');
             } else {
-                console.error('MyReviewsDisplay: Doctor document not found for liking:', doctorId);
-                showMessage('Failed to process like: Doctor not found.', 'error');
+                // User has not liked, so like (create the like document in public and private)
+                await setDoc(publicLikeDocRef, {
+                    timestamp: new Date(),
+                });
+                await setDoc(privateLikeDocRef, { // Create private copy
+                    timestamp: new Date(),
+                });
+                showMessage('Review liked!', 'success');
             }
+
         } catch (e) {
             console.error("MyReviewsDisplay: Error liking/unliking review: ", e);
             showMessage(`Error processing like: ${e.message}`, 'error');
@@ -209,7 +221,8 @@ const MyReviewsDisplay = () => {
 
                             {/* Engagement Summary */}
                             <div className="flex items-center gap-4 border-t border-gray-100 pt-3 mt-3">
-                                <button 
+                                <button
+                                    // Pass hospitalId and doctorId from the review object
                                     onClick={() => handleLikeReview(review.id, review.hospitalId, review.doctorId)}
                                     className={`flex items-center transition-colors ${userHasLiked ? 'text-blue-600' : 'text-gray-600 hover:text-blue-500'}`}
                                 >
@@ -232,7 +245,7 @@ const MyReviewsDisplay = () => {
                                 {review.comments && review.comments.length > 0 ? (
                                     <div className="space-y-3">
                                         {review.comments.map((comment, commentIndex) => (
-                                            <div key={comment.date.getTime() + '_' + commentIndex} className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700 border border-gray-100">
+                                            <div key={comment.id || (comment.date.getTime() + '_' + commentIndex)} className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700 border border-gray-100">
                                                 <div className="flex items-center mb-1">
                                                     <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-800 text-xs font-semibold mr-2">
                                                         {comment.userId ? comment.userId.charAt(0).toUpperCase() : 'U'}
