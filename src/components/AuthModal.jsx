@@ -35,7 +35,7 @@ const AuthModal = ({ onClose }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
-    const [phoneNumber, setPhoneNumber] = useState('');
+    const [phoneNumber, setPhoneNumber] = useState('+1'); // Initialize with +1
     const [message, setMessage] = useState('');
     const [messageType, setMessageType] = useState('');
     const [currentStep, setCurrentStep] = useState(0); // 0: Email/Username, 1: Password, 2: Phone/OTP
@@ -176,8 +176,9 @@ const AuthModal = ({ onClose }) => {
             setPhoneNumberError('Please enter your phone number.');
             return;
         }
-        if (!phoneNumber.startsWith('+') || phoneNumber.trim().length < 10) {
-            setPhoneNumberError('Phone number must start with a "+" and include country code (e.g., +11234567890).');
+        // Validate that the phone number starts with +1 and has more digits
+        if (!phoneNumber.startsWith('+1') || phoneNumber.trim().length < 10) { // Minimum length for +1 and 7 digits
+            setPhoneNumberError('Phone number must start with "+1" and include at least 7 digits after.');
             return;
         }
 
@@ -498,7 +499,7 @@ const AuthModal = ({ onClose }) => {
         setEmail('');
         setPassword('');
         setConfirmPassword('');
-        setPhoneNumber('');
+        setPhoneNumber('+1'); // Reset phone number to +1
         setUsername(''); // Clear username on mode toggle
         setMessage('');
         setMessageType('');
@@ -539,7 +540,7 @@ const AuthModal = ({ onClose }) => {
 
     return (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4 font-inter">
-            <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md relative animate-scale-in">
+            <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md relative animate-scale-in overflow-y-auto"> {/* Added overflow-y-auto */}
                 <button
                     onClick={handleCloseAndCleanup}
                     className="absolute top-4 right-4 text-gray-500 hover:text-gray-800 text-2xl font-bold transition-transform duration-200 transform hover:scale-110"
@@ -558,14 +559,14 @@ const AuthModal = ({ onClose }) => {
                 )}
 
                 <form onSubmit={handleAuthAction} className="space-y-4 flex flex-col items-center">
-                    <div className="overflow-hidden w-full">
+                    <div className="w-full overflow-hidden"> {/* Re-added overflow-hidden */}
                         <div
                             className="flex transition-transform duration-500 ease-in-out"
                             style={{ transform: `translateX(-${isLogin ? 0 : currentStep * 100}%)` }}
                         >
                             {/* Sign In / Step 0: Email & Password (for login) */}
                             {isLogin && (
-                                <div className="w-full flex-shrink-0 space-y-4 px-4">
+                                <div className="w-full flex-shrink-0 space-y-4 px-4 py-4"> {/* Added py-4 */}
                                     <div>
                                         <label htmlFor="email" className="block text-gray-700 text-sm font-medium mb-2 text-left">Email</label>
                                         <input
@@ -597,7 +598,7 @@ const AuthModal = ({ onClose }) => {
                             {!isLogin && (
                                 <>
                                     {/* Step 0: Email & Username (for signup) */}
-                                    <div className="w-full flex-shrink-0 space-y-4 px-4">
+                                    <div className="w-full flex-shrink-0 space-y-4 px-4 py-4"> {/* Added py-4 */}
                                         <div>
                                             <label htmlFor="email" className="block text-gray-700 text-sm font-medium mb-2 text-left">Email</label>
                                             <input
@@ -626,7 +627,7 @@ const AuthModal = ({ onClose }) => {
                                     </div>
 
                                     {/* Step 1: Password and Confirm Password (for signup) */}
-                                    <div className="w-full flex-shrink-0 space-y-4 px-4">
+                                    <div className="w-full flex-shrink-0 space-y-4 px-4 py-4"> {/* Added py-4 */}
                                         <div>
                                             <label htmlFor="password" className="block text-gray-700 text-sm font-medium mb-2 text-left">Password</label>
                                             <input
@@ -654,25 +655,7 @@ const AuthModal = ({ onClose }) => {
                                     </div>
 
                                     {/* Step 2: Phone Number Input & OTP Verification (for signup) */}
-                                    <div className="w-full flex-shrink-0 space-y-4 px-4">
-                                        {/* Username Input for Phone Signup (if not already set from email step) */}
-                                        {/* This input is redundant if username is collected in step 0, but kept for clarity if flow changes */}
-                                        {currentStep === 2 && ( // Only show if we are specifically on the phone step
-                                            <div>
-                                                <label htmlFor="username-phone-signup" className="block text-gray-700 text-sm font-medium mb-2 text-left">Username</label>
-                                                <input
-                                                    type="text"
-                                                    id="username-phone-signup"
-                                                    className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${usernameError ? 'border-red-500' : 'border-gray-300'}`}
-                                                    placeholder="Choose a username"
-                                                    value={username}
-                                                    onChange={(e) => { setUsername(e.target.value); setUsernameError(''); }}
-                                                    disabled={isSendingOtp || verificationId}
-                                                />
-                                                {usernameError && <p className="text-red-500 text-xs mt-1 text-left">{usernameError}</p>}
-                                            </div>
-                                        )}
-
+                                    <div className="w-full flex-shrink-0 space-y-4 px-4 py-4"> {/* Added py-4 */}
                                         {!verificationId ? (
                                             <div className="relative">
                                                 <label htmlFor="phoneNumber" className="block text-gray-700 text-sm font-medium mb-2 text-left">Phone Number</label>
@@ -682,7 +665,19 @@ const AuthModal = ({ onClose }) => {
                                                     className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${phoneNumberError ? 'border-red-500' : 'border-gray-300'}`}
                                                     placeholder="e.g., +11234567890"
                                                     value={phoneNumber}
-                                                    onChange={(e) => { setPhoneNumber(e.target.value); setPhoneNumberError(''); }}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value;
+                                                        // Ensure +1 is always present and not deletable
+                                                        if (!value.startsWith('+1')) {
+                                                            setPhoneNumber('+1' + value.replace(/^\+?1?/, '')); // Prepend +1 if missing or replaced
+                                                        } else if (value === '+') { // If user tries to delete '1' from '+1'
+                                                            setPhoneNumber('+1'); // Reset to '+1'
+                                                        }
+                                                        else {
+                                                            setPhoneNumber(value);
+                                                        }
+                                                        setPhoneNumberError('');
+                                                    }}
                                                     disabled={isSendingOtp}
                                                 />
                                                 <p className="text-xs text-gray-500 mt-1 text-left">For human verification purposes only! Include country code (e.g., +1).</p>
@@ -801,23 +796,7 @@ const AuthModal = ({ onClose }) => {
                     )}
                 </div>
 
-                <div className="mt-6 border-t border-gray-200 pt-6 space-y-4">
-                    <p className="text-center text-gray-600">Or continue with</p>
-                    <div className="flex justify-center gap-4">
-                        <button
-                            onClick={handleGoogleSignIn}
-                            className="flex items-center justify-center w-1/2 bg-white border border-gray-300 text-gray-800 py-3 px-4 rounded-full shadow-md hover:bg-gray-50 transition duration-300 transform hover:scale-105"
-                        >
-                            <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M12.0003 4.75C14.0273 4.75 15.8053 5.438 17.1523 6.694L18.9643 4.882C17.0183 3.033 14.6063 2 12.0003 2C8.87533 2 6.07133 3.453 4.38633 5.859L6.04633 7.153C6.88233 5.761 8.39633 4.75 12.0003 4.75Z" fill="#EA4335"/>
-                                <path d="M23.4999 12.272C23.4999 11.492 23.4249 10.721 23.2999 9.969H12.2009V14.51H18.7959C18.5919 15.534 17.9739 16.395 17.1199 16.989L18.7959 18.293C19.8669 17.335 20.6699 16.035 21.1899 14.51L23.4999 12.272Z" fill="#4285F4"/>
-                                <path d="M6.04625 16.847L4.38625 18.141C5.97125 20.547 8.87525 22 12.0003 22C14.5943 22 17.0003 20.967 18.9353 19.14L17.1433 17.714C15.8053 18.528 14.0273 19.002 12.0003 19.002C8.39633 19.002 6.88233 17.991 6.04625 16.847Z" fill="#34A853"/>
-                                <path d="M4.70725 14.51L2.39725 16.75C1.61525 15.226 1.12725 13.626 1.12725 12C1.12725 10.374 1.61525 8.774 2.39725 7.25L4.70725 9.488C4.24925 10.492 3.99925 11.25 3.99925 12C3.99925 12.75 4.24925 13.508 4.70725 14.51Z" fill="#FBBC04"/>
-                            </svg>
-                            Google
-                        </button>
-                    </div>
-                </div>
+                {/* "Or continue with" section completely removed */}
             </div>
         </div>
     );

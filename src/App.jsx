@@ -12,8 +12,8 @@ import {
     signOut,
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
-    GoogleAuthProvider,
-    signInWithPopup,
+    GoogleAuthProvider, // Keep GoogleAuthProvider import for now, but it's not used in AuthModal
+    signInWithPopup, // Keep signInWithPopup import for now, but it's not used in AuthModal
     OAuthProvider,
     linkWithCredential,
     EmailAuthProvider,
@@ -268,6 +268,7 @@ export default function App() {
                 if (recaptchaVerifierState) { // Check state, not ref
                     console.log("App.jsx: RecaptchaVerifier already exists in state, skipping re-initialization.");
                     setIsRecaptchaReadyForUse(true); // Ensure state is true if already initialized
+                    setRecaptchaKeyCounter(prev => prev + 1); // Trigger re-render to ensure AuthModal picks up
                     return;
                 }
 
