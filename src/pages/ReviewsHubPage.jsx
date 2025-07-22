@@ -198,7 +198,7 @@ const ReviewsHubPage = () => {
 
     const [showCommentInput, setShowCommentInput] = useState({});
     const [commentText, setCommentText] = useState({});
-    const [commentSuccessMessage, setCommentSuccessMessage] = useState({}); // Re-introduced for temporary success message
+    const [commentSuccessMessage, setCommentSuccessMessage] = useState({}); // Re-introduced for temporary success message - CORRECTED
 
     // NEW STATES for Add Hospital/Doctor forms
     const [showAddHospitalForm, setShowAddHospitalForm] = useState(false);
@@ -551,8 +551,8 @@ const ReviewsHubPage = () => {
     // New useEffect for managing the onSnapshot listener for reviews
     useEffect(() => {
         let unsubscribeReviews = () => {};
-        const unsubscribeComments = {}; // Store unsubscribe functions for comments
-        const unsubscribeLikes = {}; // Store unsubscribe functions for likes
+        const unsubscribeComments = {}; // To store unsubscribe functions for comments
+        const unsubscribeLikes = {}; // To store unsubscribe functions for likes
 
         if (selectedDoctor && db && appId) {
             const reviewsColRef = collection(db, `artifacts/${appId}/public/data/hospitals/${selectedDoctor.hospitalId}/doctors/${selectedDoctor.id}/reviews`);
@@ -585,7 +585,9 @@ const ReviewsHubPage = () => {
                             );
                             // If the review is new and not yet in state, add it (edge case for initial load)
                             if (!updatedReviews.some(r => r.id === reviewId)) {
-                                return [...updatedReviews, { ...reviewData, id: reviewId, comments, likes: [] }].sort((a, b) => (b.date ? b.date.getTime() : 0) - (a.date ? a.date.getTime() : 0));
+                                // Find the original review data if it exists in the snapshot, otherwise use a minimal structure
+                                const originalReview = querySnapshot.docs.find(doc => doc.id === reviewId)?.data() || reviewData;
+                                return [...updatedReviews, { ...originalReview, id: reviewId, comments, likes: [] }].sort((a, b) => (b.date ? b.date.getTime() : 0) - (a.date ? a.date.getTime() : 0));
                             }
                             return updatedReviews;
                         });
@@ -603,7 +605,9 @@ const ReviewsHubPage = () => {
                             );
                             // If the review is new and not yet in state, add it (edge case for initial load)
                             if (!updatedReviews.some(r => r.id === reviewId)) {
-                                return [...updatedReviews, { ...reviewData, id: reviewId, comments: [], likes }].sort((a, b) => (b.date ? b.date.getTime() : 0) - (a.date ? a.date.getTime() : 0));
+                                // Find the original review data if it exists in the snapshot, otherwise use a minimal structure
+                                const originalReview = querySnapshot.docs.find(doc => doc.id === reviewId)?.data() || reviewData;
+                                return [...updatedReviews, { ...originalReview, id: reviewId, comments: [], likes }].sort((a, b) => (b.date ? b.date.getTime() : 0) - (a.date ? a.date.getTime() : 0));
                             }
                             return updatedReviews;
                         });
@@ -630,8 +634,10 @@ const ReviewsHubPage = () => {
                         unsubscribeLikes[id]();
                     }
                 });
+                // Update the current unsubscribe objects
                 Object.assign(unsubscribeComments, newUnsubscribeComments);
                 Object.assign(unsubscribeLikes, newUnsubscribeLikes);
+
 
                 fetchedReviews.sort((a, b) => {
                     const dateA = a.date ? a.date.getTime() : 0;
@@ -702,7 +708,9 @@ const ReviewsHubPage = () => {
             const newReviewData = {
                 stars: 0, // Assuming a default or no star rating for now, or add a rating input
                 comment: reviewText,
-                reviewerId: auth.currentUser?.displayName || `RN-${currentUserId.substring(0, 5)}`,
+                // CORRECTED: Use currentUserId (UID) for security rules match
+                reviewerId: currentUserId,
+                reviewerDisplayName: auth.currentUser?.displayName || `RN-${currentUserId.substring(0, 5)}`, // Store display name separately for UI
                 date: new Date(), // Firestore Timestamp will handle this automatically
                 nursingField: nursingField,
                 hospitalId: selectedHospital.id, // Store references for easier querying
@@ -764,7 +772,9 @@ const ReviewsHubPage = () => {
 
             const newCommentData = {
                 text: commentTextValue,
-                userId: auth.currentUser?.displayName || `RN-${currentUserId.substring(0, 5)}`,
+                // CORRECTED: Use currentUserId (UID) for security rules match
+                userId: currentUserId,
+                userDisplayName: auth.currentUser?.displayName || `RN-${currentUserId.substring(0, 5)}`, // Store display name separately for UI
                 date: new Date(),
             };
 
@@ -773,8 +783,31 @@ const ReviewsHubPage = () => {
             const newCommentId = commentDocRef.id;
 
             // Update the user's private copy of the review with the new comment
+            // We need to ensure the private review document exists first before adding a subcollection
+            const userReviewDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}`);
+            const userReviewSnap = await getDoc(userReviewDocRef);
+
+            if (!userReviewSnap.exists()) {
+                // If the private review document doesn't exist, create a minimal one
+                // This can happen if a user comments on someone else's review that they haven't reviewed themselves
+                const publicReviewDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors/${selectedDoctor.id}/reviews/${reviewId}`);
+                const publicReviewSnap = await getDoc(publicReviewDocRef);
+                if (publicReviewSnap.exists()) {
+                    await setDoc(userReviewDocRef, {
+                        ...publicReviewSnap.data(), // Copy public review data
+                        id: reviewId,
+                        userId: currentUserId, // Ensure the private review doc is owned by current user
+                        hospitalId: selectedHospital.id,
+                        doctorId: selectedDoctor.id,
+                        // Do not copy comments/likes arrays here, as they will be subcollections
+                        comments: [],
+                        likes: []
+                    });
+                }
+            }
+
             const userReviewCommentsColRef = collection(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}/comments`);
-            await setDoc(doc(userReviewCommentsColRef, newCommentId), newCommentData); // Use setDoc with generated ID
+            await setDoc(doc(userReviewCommentsColRef, newCommentId), newCommentData);
 
 
             // Clear the comment input for the specific review
@@ -808,32 +841,27 @@ const ReviewsHubPage = () => {
 
         try {
             // Reference to the specific like document (using userId as the ID)
-            const likeDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors/${selectedDoctor.id}/reviews/${reviewId}/likes/${currentUserId}`);
+            const publicLikeDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors/${selectedDoctor.id}/reviews/${reviewId}/likes/${currentUserId}`);
+            const publicLikeSnap = await getDoc(publicLikeDocRef);
 
-            const likeSnap = await getDoc(likeDocRef);
+            // Reference to the private like document (using userId as the ID)
+            const privateLikeDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}/likes/${currentUserId}`);
 
-            if (likeSnap.exists()) {
-                // User has already liked, so unlike (delete the like document)
-                await deleteDoc(likeDocRef);
+            if (publicLikeSnap.exists()) {
+                // User has already liked, so unlike (delete the like document from public and private)
+                await deleteDoc(publicLikeDocRef);
+                await deleteDoc(privateLikeDocRef); // Ensure private copy is also removed
                 showMessage('Review unliked.', 'info');
-
-                // Also delete from user's private copy
-                const userLikeDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}/likes/${currentUserId}`);
-                await deleteDoc(userLikeDocRef);
-
             } else {
-                // User has not liked, so like (create the like document)
-                await setDoc(likeDocRef, {
+                // User has not liked, so like (create the like document in public and private)
+                await setDoc(publicLikeDocRef, {
                     timestamp: new Date(),
                     // No need to store reviewId, doctorId, hospitalId here as they are in the path
                 });
-                showMessage('Review liked!', 'success');
-
-                // Also create a like in user's private copy
-                const userLikeDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}/likes/${currentUserId}`);
-                await setDoc(userLikeDocRef, {
+                await setDoc(privateLikeDocRef, { // Create private copy
                     timestamp: new Date(),
                 });
+                showMessage('Review liked!', 'success');
             }
 
         } catch (e) {
@@ -901,7 +929,7 @@ const ReviewsHubPage = () => {
 
                 {/* Hospital Selection Section */}
                 <section id="hospital-selection-section" className="bg-white p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted">
-                    <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6 text-center"> Find Your Hospital Below </h2>
+                    <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6 text-center">Find Your Hospital</h2>
                     <div className="flex flex-col md:flex-row items-center gap-4 mb-4">
                         <input
                             type="text"
@@ -1064,7 +1092,7 @@ const ReviewsHubPage = () => {
                     </div>
 
                     <div className="mb-4">
-                        <p className="text-lg font-semibold text-gray-800">Doctors with the Tea:</p>
+                        <p className="text-lg font-semibold text-gray-800">Doctors with reviews:</p>
                         <div id="doctors-list" className="flex flex-wrap gap-2 mt-2 max-h-60 overflow-y-auto border border-gray-200 rounded-md p-2" aria-live="polite">
                             {loadingDoctors && <p className="text-gray-500 italic w-full text-center">Loading doctors...</p>}
                             {noDoctorsFound && !loadingDoctors && <p className="text-gray-500 italic w-full text-center">No doctors found for this hospital yet.</p>}
@@ -1196,7 +1224,7 @@ const ReviewsHubPage = () => {
                                     },
                                     "author": {
                                         "@type": "Person",
-                                        "name": review.reviewerId
+                                        "name": review.reviewerDisplayName // Use reviewerDisplayName for schema
                                     },
                                     "reviewBody": review.comment,
                                     "datePublished": review.date instanceof Date ? review.date.toISOString() : new Date(review.date).toISOString()
@@ -1210,10 +1238,10 @@ const ReviewsHubPage = () => {
 
                                         <div className="flex items-center mb-4">
                                             <div className="w-10 h-10 bg-custom-beige rounded-full flex items-center justify-center text-gray-800 font-bold text-lg mr-3 shadow-sm">
-                                                {review.reviewerId ? review.reviewerId.charAt(0).toUpperCase() : 'RN'}
+                                                {review.reviewerDisplayName ? review.reviewerDisplayName.charAt(0).toUpperCase() : 'RN'}
                                             </div>
                                             <div>
-                                                <p className="font-semibold text-gray-800">{review.reviewerId}</p>
+                                                <p className="font-semibold text-gray-800">{review.reviewerDisplayName}</p>
                                                 <p className="text-sm text-gray-600">{review.nursingField}</p>
                                                 <p className="text-xs text-gray-500">
                                                     {review.date instanceof Date ? review.date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
@@ -1262,9 +1290,9 @@ const ReviewsHubPage = () => {
                                                         <div key={comment.id || (comment.date.getTime() + '_' + commentIndex)} className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700 border border-gray-100">
                                                             <div className="flex items-center mb-1">
                                                                 <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-800 text-xs font-semibold mr-2">
-                                                                    {comment.userId ? comment.userId.charAt(0).toUpperCase() : 'U'}
+                                                                    {comment.userDisplayName ? comment.userDisplayName.charAt(0).toUpperCase() : 'U'}
                                                                 </div>
-                                                                <p className="font-medium text-gray-800">{comment.userId}</p>
+                                                                <p className="font-medium text-gray-800">{comment.userDisplayName}</p>
                                                                 <p className="text-xs text-gray-500 ml-auto">
                                                                     {comment.date instanceof Date ? comment.date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
                                                                 </p>
