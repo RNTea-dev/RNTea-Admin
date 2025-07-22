@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { FirebaseContext } from '../App.jsx'; // Assuming FirebaseContext is correctly provided by App.jsx
-import StarRating from '../components/StarRating.jsx';
+// import StarRating from '../components/StarRating.jsx'; // Removed StarRating import
 import MessageBox from '../components/MessageBox.jsx';
 import AuthModal from '../components/AuthModal.jsx';
 
@@ -10,6 +10,7 @@ import {
     doc,
     updateDoc,
     arrayUnion,
+    arrayRemove, // Added arrayRemove for unliking
     getDoc,
     onSnapshot,
     setDoc,
@@ -189,13 +190,16 @@ const ReviewsHubPage = () => {
     const [loadingReviews, setLoadingReviews] = useState(false);
     const [noReviewsForDoctor, setNoReviewsForDoctor] = useState(false);
     const [reviewText, setReviewText] = useState('');
-    const [reviewRating, setReviewRating] = useState(0);
+    const [reviewRating, setReviewRating] = useState(0); // reviewRating state kept for potential future use or if needed for other components
     const [nursingField, setNursingField] = useState(NURSING_FIELDS[0]); // State for selected nursing field
     const [searchQuery, setSearchQuery] = useState(''); // NEW: State for search input
     const [filteredNursingFields, setFilteredNursingFields] = useState([]); // NEW: State for filtered suggestions
     const [showSuggestions, setShowSuggestions] = useState(false); // NEW: State to control suggestion visibility
 
+    // This state is no longer strictly needed for showing/hiding the section,
+    // as isShareTeaCollapsed will handle it. Keeping it for mobile button logic.
     const [showReviewSubmissionSection, setShowReviewSubmissionSection] = useState(false);
+
     const [showCommentInput, setShowCommentInput] = useState({});
     const [commentText, setCommentText] = useState({});
     const [commentSuccessMessage, setCommentSuccessMessage] = useState({}); // Re-introduced for temporary success message
@@ -215,7 +219,7 @@ const ReviewsHubPage = () => {
     // Refs for scrolling
     const doctorSelectionSectionRef = React.useRef(null);
     const doctorReviewsDisplaySectionRef = React.useRef(null);
-    const reviewSubmissionSectionRef = React.useRef(null);
+    // reviewSubmissionSectionRef is no longer needed as it's merged
     const addHospitalFormRef = React.useRef(null); // Ref for new hospital form
     const addDoctorFormRef = React.useRef(null); // Ref for new doctor form
 
@@ -568,7 +572,8 @@ const ReviewsHubPage = () => {
                         comments: review.comments ? review.comments.map(comment => ({
                             ...comment,
                             date: comment.date && typeof comment.date.toDate === 'function' ? comment.date.toDate() : new Date(comment.date)
-                        })) : []
+                        })) : [],
+                        likes: review.likes || [] // Ensure likes array exists
                     }));
                     setReviews(reviewsToDisplay);
                     console.log("ReviewsHubPage: Reviews state updated. Current reviews count:", reviewsToDisplay.length);
@@ -620,10 +625,11 @@ const ReviewsHubPage = () => {
             showMessage(contentCheck.message, 'error');
             return;
         }
-        if (reviewRating === 0) {
-            showMessage('Please select a star rating.', 'error');
-            return;
-        }
+        // Removed reviewRating validation
+        // if (reviewRating === 0) {
+        //     showMessage('Please select a star rating.', 'error');
+        //     return;
+        // }
 
         // Log the current user's display name before submission
         console.log("ReviewsHubPage: auth.currentUser?.displayName at submission:", auth.currentUser?.displayName);
@@ -636,7 +642,7 @@ const ReviewsHubPage = () => {
 
             const newReview = {
                 id: reviewId,
-                stars: reviewRating,
+                // stars: reviewRating, // Removed stars
                 comment: reviewText,
                 // Use auth.currentUser?.displayName directly, or fallback to masked ID
                 reviewerId: auth.currentUser?.displayName || `RN-${currentUserId.substring(0, 5)}`,
@@ -644,7 +650,8 @@ const ReviewsHubPage = () => {
                 hospitalName: selectedHospital.name,
                 doctorName: selectedDoctor.name,
                 nursingField: nursingField,
-                comments: [] // Initialize comments array for new review
+                comments: [], // Initialize comments array for new review
+                likes: [] // Initialize likes array for new review
             };
             console.log("ReviewsHubPage: Submitting new review:", newReview);
 
@@ -665,7 +672,7 @@ const ReviewsHubPage = () => {
 
 
             setReviewText('');
-            setReviewRating(0);
+            setReviewRating(0); // Kept for consistency, though not used in UI
             setNursingField(NURSING_FIELDS[0]);
             setSearchQuery('');
             showMessage('Review submitted successfully!', 'success');
@@ -796,6 +803,92 @@ const ReviewsHubPage = () => {
         }
     }, [currentUserId, currentUserIsAnonymous, selectedHospital, selectedDoctor, db, appId, showMessage, setShowAuthModal, auth]);
 
+    // --- Like Functionality ---
+    const handleLikeReview = useCallback(async (reviewId) => {
+        console.log("ReviewsHubPage: handleLikeReview called for reviewId:", reviewId);
+        if (!currentUserId || currentUserIsAnonymous) {
+            showMessage('You must be logged in to like a review. Please sign up or log in.', 'info');
+            setShowAuthModal(true);
+            return;
+        }
+        if (!db || !appId || !selectedHospital || !selectedDoctor) {
+            showMessage('Firebase or selected doctor/hospital data not ready.', 'error');
+            return;
+        }
+
+        try {
+            const doctorRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors/${selectedDoctor.id}`);
+            const docSnap = await getDoc(doctorRef);
+
+            if (docSnap.exists()) {
+                const doctorData = docSnap.data();
+                let updatedRatings = [...(doctorData.ratings || [])];
+                const targetReviewIndex = updatedRatings.findIndex(review => review.id === reviewId);
+
+                if (targetReviewIndex !== -1) {
+                    let currentLikes = updatedRatings[targetReviewIndex].likes || [];
+                    const userHasLiked = currentLikes.includes(currentUserId);
+
+                    if (userHasLiked) {
+                        // Unlike the review
+                        updatedRatings[targetReviewIndex].likes = currentLikes.filter(uid => uid !== currentUserId);
+                        showMessage('Review unliked.', 'info');
+                    } else {
+                        // Like the review
+                        updatedRatings[targetReviewIndex].likes = [...currentLikes, currentUserId];
+                        showMessage('Review liked!', 'success');
+                    }
+
+                    // Update the doctor document in public collection
+                    await updateDoc(doctorRef, {
+                        ratings: updatedRatings
+                    });
+                    console.log('ReviewsHubPage: Doctor document updated with new like status.');
+
+                    // Also update the user's private copy of the review
+                    const userReviewRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}`);
+                    const userReviewSnap = await getDoc(userReviewRef);
+
+                    if (userReviewSnap.exists()) {
+                        // If the user has this review in their 'myReviews', update its likes
+                        if (userHasLiked) {
+                            await updateDoc(userReviewRef, {
+                                likes: arrayRemove(currentUserId)
+                            });
+                        } else {
+                            await updateDoc(userReviewRef, {
+                                likes: arrayUnion(currentUserId)
+                            });
+                        }
+                        console.log('ReviewsHubPage: User private review updated with new like status.');
+                    } else {
+                        // If the user doesn't have this review in their private collection (e.g., they liked someone else's review)
+                        // Fetch the full review data from the public collection to create a new entry in myReviews
+                        const publicReviewData = updatedRatings[targetReviewIndex];
+                        await setDoc(userReviewRef, {
+                            ...publicReviewData,
+                            userId: currentUserId,
+                            hospitalId: selectedHospital.id,
+                            doctorId: selectedDoctor.id,
+                            likes: publicReviewData.likes // Ensure the likes array is copied correctly
+                        });
+                        console.log('ReviewsHubPage: New user review document created for liked review.');
+                    }
+
+                } else {
+                    console.error('ReviewsHubPage: Error: Review not found by ID in doctor ratings array for liking.', reviewId);
+                    showMessage('Failed to process like: Review not found.', 'error');
+                }
+            } else {
+                console.error('ReviewsHubPage: Doctor document not found for liking:', selectedDoctor.id);
+                showMessage('Failed to process like: Doctor not found.', 'error');
+            }
+        } catch (e) {
+            console.error("ReviewsHubPage: Error liking/unliking review: ", e);
+            showMessage(`Error processing like: ${e.message}`, 'error');
+        }
+    }, [currentUserId, currentUserIsAnonymous, db, appId, selectedHospital, selectedDoctor, showMessage, setShowAuthModal]);
+
 
     // Mobile review form toggle buttons
     const handleAddReviewMobileClick = useCallback(() => {
@@ -804,10 +897,14 @@ const ReviewsHubPage = () => {
             setShowAuthModal(true);
             return;
         }
-        setShowReviewSubmissionSection(true);
+        setShowReviewSubmissionSection(true); // This state is still useful for mobile button visibility
         setIsShareTeaCollapsed(false); // Ensure review form is expanded
-        if (reviewSubmissionSectionRef.current) {
-            reviewSubmissionSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Scroll to the review submission section within the doctor reviews display
+        if (doctorReviewsDisplaySectionRef.current) {
+            const reviewSubmissionElement = doctorReviewsDisplaySectionRef.current.querySelector('#review-submission-form-container'); // Updated ID
+            if (reviewSubmissionElement) {
+                reviewSubmissionElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         }
     }, [currentUserId, currentUserIsAnonymous, showMessage, setShowAuthModal]);
 
@@ -949,7 +1046,7 @@ const ReviewsHubPage = () => {
 
                 {/* Doctor Selection Section */}
                 <section id="doctor-selection-section" ref={doctorSelectionSectionRef} className={`bg-white p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted ${selectedHospital ? '' : 'hidden'}`}>
-                    <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6 text-center">Select a doctor</h2>
+                    <h2 className="2xl:text-3xl md:text-3xl font-bold text-gray-800 mb-6 text-center">Select a doctor</h2>
                     <div className="flex flex-col md:flex-row items-center gap-4 mb-4">
                         <input
                             type="text"
@@ -1044,242 +1141,246 @@ const ReviewsHubPage = () => {
                 </section>
 
                 {/* Main content grid for larger screens (Reviews & Write Review) */}
-                <div id="reviews-content-grid" className={`grid grid-cols-1 gap-8 ${selectedDoctor ? '' : 'hidden'}`}>
-                    {/* Left Column: Review Submission Section */}
-                    {(currentUserId && !currentUserIsAnonymous) && (
-                        <section
-                            id="review-submission-section"
-                            ref={reviewSubmissionSectionRef}
-                            className={`bg-white p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted`}
-                        >
-                            <div className="flex justify-between items-center mb-6 cursor-pointer" onClick={() => setIsShareTeaCollapsed(prev => !prev)}>
-                                <h2 className="text-2xl md:text-3xl font-bold text-gray-800">
-                                    Share Some Tea for <span className="text-[#CC5500]">{selectedDoctor?.name}</span>
-                                </h2>
-                                <button className="text-gray-600 hover:text-[#CC5500] transition-colors">
-                                    {isShareTeaCollapsed ? (
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                        </svg>
-                                    ) : (
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                                        </svg>
-                                    )}
-                                </button>
-                            </div>
-
-                            {!isShareTeaCollapsed && (
-                                <>
-                                    {/* Star Rating */}
-                                    <div className="mb-4">
-                                        <label htmlFor="review-stars" className="block text-gray-700 text-sm font-medium mb-2">Rating</label>
-                                        <StarRating rating={reviewRating} onRatingChange={setReviewRating} />
-                                    </div>
-                                    {/* Nursing Field Search Bar with Suggestions */}
-                                    <div className="mb-4 relative">
-                                        <label htmlFor="nursing-field-input" className="block text-gray-700 text-sm font-medium mb-2">
-                                            Which field of Nursing are you?
-                                        </label>
-                                        <input
-                                            type="text"
-                                            id="nursing-field-input"
-                                            className="w-full p-3 border border-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-custom-beige"
-                                            placeholder="Start typing your nursing field..."
-                                            value={searchQuery}
-                                            onChange={handleSearchInputChange}
-                                            onFocus={() => setShowSuggestions(true)}
-                                            onBlur={() => setTimeout(() => setShowSuggestions(false), 100)}
-                                        />
-                                        {showSuggestions && filteredNursingFields.length > 0 && (
-                                            <ul className="absolute z-10 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto mt-1">
-                                                {filteredNursingFields.map((field, index) => (
-                                                    <li
-                                                        key={index}
-                                                        className="p-3 hover:bg-gray-100 cursor-pointer text-gray-800"
-                                                        onMouseDown={(e) => e.preventDefault()} // Prevent blur when clicking suggestion
-                                                        onClick={() => handleSuggestionClick(field)}
-                                                    >
-                                                        {field}
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        )}
-                                    </div>
-                                    <textarea
-                                        id="review-text"
-                                        className="w-full p-3 border border-gray-300 rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-custom-beige"
-                                        rows="6"
-                                        placeholder="Share your experience or review here..."
-                                        value={reviewText}
-                                        onChange={(e) => setReviewText(e.target.value)}
-                                        maxLength={MAX_CHAR_LIMIT} // Enforce max length for review text
-                                    ></textarea>
-                                    {/* Submit Review Button - Always visible, but triggers login if not authenticated */}
-                                    <button
-                                        id="submit-review-btn"
-                                        className="bg-custom-beige text-gray-800 font-bold py-3 px-6 rounded-full hover:opacity-90 transition duration-300 shadow-md w-full btn-hover-scale"
-                                        onClick={handleSubmitReview}
-                                    >
-                                        Submit Review
-                                    </button>
-                                </>
-                            )}
-                        </section>
+                <section id="doctor-reviews-display" ref={doctorReviewsDisplaySectionRef}
+                    className={`bg-white p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted ${selectedDoctor ? '' : 'hidden'}`}>
+                    <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6 text-center">Psst...Here's The Tea On <span id="display-selected-doctor-reviews" className="text-[#CC5500] font-extrabold">{(selectedDoctor && selectedDoctor.name) ? selectedDoctor.name : ''}</span></h2>
+                    
+                    {/* The new clickable element to show the review form */}
+                    {(currentUserId && !currentUserIsAnonymous) && isShareTeaCollapsed && (
+                        <div className="text-center mb-6">
+                            <button
+                                onClick={() => {
+                                    if (!currentUserId || currentUserIsAnonymous) {
+                                        showMessage('Login or Sign Up to share your tea.', 'info');
+                                        setShowAuthModal(true);
+                                    } else {
+                                        setIsShareTeaCollapsed(false); // Only show the form
+                                    }
+                                }}
+                                className="text-gray-600 hover:text-custom-beige font-semibold py-2 px-4 rounded-md transition-colors transform hover:scale-105 transition-transform duration-300 ease-in-out"
+                            >
+                                Have Some Tea? <span className="text-[#CC5500]">Spill it!</span>
+                            </button>
+                        </div>
+                    )}
+                    {(!currentUserId || currentUserIsAnonymous) && isShareTeaCollapsed && (
+                        <p className="text-red-600 mt-2 text-center">Please log in or sign up to share your tea.</p>
                     )}
 
-                    {/* Right Column: Reviews Display Section */}
-                    <section id="doctor-reviews-display" ref={doctorReviewsDisplaySectionRef}
-                        className="bg-white p-6 md:p-8 rounded-lg shadow-lg mb-8 section-hover scroll-margin-top-adjusted">
-                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Here's the tea on <span id="display-selected-doctor-reviews" className="text-[#CC5500] font-extrabold">{(selectedDoctor && selectedDoctor.name) ? selectedDoctor.name : ''}</span></h2>
-                        {window.innerWidth < 1024 && (currentUserId && !currentUserIsAnonymous) && (
-                            <button
-                                id="add-review-mobile-btn"
-                                className="bg-[#001346] text-white px-5 py-2 rounded-md hover:bg-[#000A2C] transition duration-200 btn-hover-scale mb-4 w-full"
-                                onClick={handleAddReviewMobileClick}
-                            >
-                                Write a Review for {selectedDoctor?.name}
-                            </button>
-                        )}
 
-                        {loadingReviews && <p className="text-gray-700 italic text-center" aria-live="polite">Loading reviews...</p>}
-                        {noReviewsForDoctor && !loadingReviews && <p className="text-gray-700 italic text-center" aria-live="polite">No reviews found for this doctor yet. Be the first to add one!</p>}
-
-                        {reviews.length > 0 && (
-                            <div id="reviews-list" className="space-y-6">
-                                {reviews.map((review, index) => {
-                                    const reviewSchema = {
-                                        "@context": "https://schema.org",
-                                        "@type": "Review",
-                                        "itemReviewed": {
-                                            "@type": "Physician",
-                                            "name": selectedDoctor?.name,
-                                            "url": `https://www.myrntea.com/doctors/${selectedDoctor?.id}`
-                                        },
-                                        "reviewRating": {
-                                            "@type": "Rating",
-                                            "ratingValue": review.stars,
-                                            "bestRating": 5
-                                        },
-                                        "author": {
-                                            "@type": "Person",
-                                            "name": review.reviewerId
-                                        },
-                                        "reviewBody": review.comment,
-                                        "datePublished": review.date instanceof Date ? review.date.toISOString() : new Date(review.date).toISOString()
-                                    };
-
-                                    return (
-                                        <div key={review.id} className="p-5 rounded-xl shadow-lg border border-gray-100" style={{backgroundColor: '#fff8e7'}}>
-                                            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(reviewSchema) }} />
-
-                                            <div className="flex items-center mb-4">
-                                                <div className="w-10 h-10 bg-custom-beige rounded-full flex items-center justify-center text-gray-800 font-bold text-lg mr-3 shadow-sm">
-                                                    {review.reviewerId ? review.reviewerId.charAt(0).toUpperCase() : 'RN'}
-                                                </div>
-                                                <div>
-                                                    <p className="font-semibold text-gray-800">{review.reviewerId}</p>
-                                                    <p className="text-sm text-gray-600">{review.nursingField}</p>
-                                                    <p className="text-xs text-gray-500">
-                                                        {review.date instanceof Date ? review.date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
-                                                    </p>
-                                                </div>
-                                                <div className="ml-auto">
-                                                    <StarRating rating={review.stars} onRatingChange={() => {}} readOnly={true} />
-                                                </div>
-                                            </div>
-
-                                            <p className="text-gray-800 leading-relaxed mb-4 text-base">
-                                                {review.comment}
-                                            </p>
-
-                                            <div className="flex items-center gap-4 border-t border-gray-100 pt-3 mt-3">
-                                                <button className="flex items-center text-gray-600 hover:text-blue-500 transition-colors">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                                                        <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
-                                                    </svg>
-                                                    Like (0)
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        if (!currentUserId || currentUserIsAnonymous) {
-                                                            showMessage('Login or Sign Up to add a comment.', 'info');
-                                                            setShowAuthModal(true);
-                                                        } else {
-                                                            setShowCommentInput(prev => ({ ...prev, [review.id]: !prev[review.id] }));
-                                                        }
-                                                    }}
-                                                    className="flex items-center text-gray-600 hover:text-green-500 transition-colors"
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                                                        <path fillRule="evenodd" d="M18 13V5a2 2 0 00-2-2H4a2 2 0 00-2 2v8a2 2 0 002 2h3l3 3 3-3h3a2 2 0 002-2zM5 7a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1zm1 3a1 1 0 100 2h3a1 1 0 100-2H6z" clipRule="evenodd" />
-                                                    </svg>
-                                                    Comment ({review.comments ? review.comments.length : 0})
-                                                </button>
-                                            </div>
-
-                                            {/* Comments Section */}
-                                            <div className="mt-4 border-t border-gray-100 pt-4">
-                                                <h4 className="text-lg font-semibold text-gray-700 mb-3">Comments on this review:</h4> {/* Changed heading for clarity */}
-                                                {review.comments && review.comments.length > 0 ? (
-                                                    <div className="space-y-3">
-                                                        {review.comments.map((comment, commentIndex) => (
-                                                            <div key={comment.date.getTime() + '_' + commentIndex} className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700 border border-gray-100">
-                                                                <div className="flex items-center mb-1">
-                                                                    <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-800 text-xs font-semibold mr-2">
-                                                                        {comment.userId ? comment.userId.charAt(0).toUpperCase() : 'U'}
-                                                                    </div>
-                                                                    <p className="font-medium text-gray-800">{comment.userId}</p>
-                                                                    <p className="text-xs text-gray-500 ml-auto">
-                                                                        {comment.date instanceof Date ? comment.date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
-                                                                    </p>
-                                                                </div>
-                                                                <p className="ml-8 text-gray-700">{comment.text}</p>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <p className="text-sm text-gray-500">No comments on this review yet.</p>
-                                                )}
-                                                {/* Add Comment Input */}
-                                                {showCommentInput[review.id] && currentUserId && !currentUserIsAnonymous && (
-                                                    <div className="flex mt-2">
-                                                        <input
-                                                            type="text"
-                                                            placeholder="Write a comment..."
-                                                            className="flex-grow p-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === 'Enter' && e.target.value.trim()) {
-                                                                    handleAddCommentToReview(review.id, e.target.value);
-                                                                    e.target.value = ''; // Clear input after posting
-                                                                }
-                                                            }}
-                                                            value={commentText[review.id] || ''}
-                                                            onChange={(e) => setCommentText(prev => ({ ...prev, [review.id]: e.target.value }))}
-                                                            maxLength={MAX_CHAR_LIMIT} // Enforce max length for comment text
-                                                        />
-                                                        <button
-                                                            className="submit-comment-btn bg-custom-beige text-gray-800 px-4 py-2 rounded-r-md hover:opacity-90 transition duration-200 btn-hover-scale"
-                                                            onClick={() => {
-                                                                const valueToPost = commentText[review.id];
-                                                                handleAddCommentToReview(review.id, valueToPost);
-                                                            }}
-                                                        >
-                                                            Post
-                                                        </button>
-                                                    </div>
-                                                )}
-                                                {commentSuccessMessage[review.id] && (
-                                                    <p className="text-green-600 text-sm mt-2">{commentSuccessMessage[review.id]}</p>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                    {/* The review submission form content, shown only when not collapsed and user is logged in */}
+                    {!isShareTeaCollapsed && currentUserId && !currentUserIsAnonymous && (
+                        <div id="review-submission-form-container" className="mb-8 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-xl md:text-2xl font-bold text-gray-800">
+                                    Share Your Tea for <span className="text-[#CC5500]">{selectedDoctor?.name}</span>
+                                </h3>
+                                <button
+                                    onClick={() => setIsShareTeaCollapsed(true)} // Hide the form
+                                    className="text-gray-600 hover:text-[#CC5500] transition-colors"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                    </svg>
+                                </button>
                             </div>
-                        )}
-                    </section>
-                </div>
+                            {/* Review form elements */}
+                            <div className="mt-4">
+                                {/* Removed Star Rating section */}
+                                {/* Nursing Field Search Bar with Suggestions */}
+                                <div className="mb-4 relative">
+                                    <label htmlFor="nursing-field-input" className="block text-gray-700 text-sm font-medium mb-2">
+                                        Which field of Nursing are you?
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="nursing-field-input"
+                                        className="w-full p-3 border border-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-custom-beige"
+                                        placeholder="Start typing your nursing field..."
+                                        value={searchQuery}
+                                        onChange={handleSearchInputChange}
+                                        onFocus={() => setShowSuggestions(true)}
+                                        onBlur={() => setTimeout(() => setShowSuggestions(false), 100)}
+                                    />
+                                    {showSuggestions && filteredNursingFields.length > 0 && (
+                                        <ul className="absolute z-10 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto mt-1">
+                                            {filteredNursingFields.map((field, index) => (
+                                                <li
+                                                    key={index}
+                                                    className="p-3 hover:bg-gray-100 cursor-pointer text-gray-800"
+                                                    onMouseDown={(e) => e.preventDefault()} // Prevent blur when clicking suggestion
+                                                    onClick={() => handleSuggestionClick(field)}
+                                                >
+                                                    {field}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                                <textarea
+                                    id="review-text"
+                                    className="w-full p-3 border border-gray-300 rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-custom-beige"
+                                    rows="6"
+                                    placeholder="Share your experience or review here..."
+                                    value={reviewText}
+                                    onChange={(e) => setReviewText(e.target.value)}
+                                    maxLength={MAX_CHAR_LIMIT} // Enforce max length for review text
+                                ></textarea>
+                                {/* Submit Review Button - Always visible, but triggers login if not authenticated */}
+                                <button
+                                    id="submit-review-btn"
+                                    className="bg-custom-beige text-gray-800 font-bold py-3 px-6 rounded-full hover:opacity-90 transition duration-300 shadow-md w-full btn-hover-scale"
+                                    onClick={handleSubmitReview}
+                                >
+                                    Submit Review
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {loadingReviews && <p className="text-gray-700 italic text-center" aria-live="polite">Loading reviews...</p>}
+                    {noReviewsForDoctor && !loadingReviews && <p className="text-gray-700 italic text-center" aria-live="polite">No reviews found for this doctor yet. Be the first to add one!</p>}
+
+                    {reviews.length > 0 && (
+                        <div id="reviews-list" className="space-y-6">
+                            {reviews.map((review, index) => {
+                                const reviewSchema = {
+                                    "@context": "https://schema.org",
+                                    "@type": "Review",
+                                    "itemReviewed": {
+                                        "@type": "Physician",
+                                        "name": selectedDoctor?.name,
+                                        "url": `https://www.myrntea.com/doctors/${selectedDoctor?.id}`
+                                    },
+                                    // "reviewRating": { // Removed reviewRating from schema
+                                    //     "@type": "Rating",
+                                    //     "ratingValue": review.stars,
+                                    //     "bestRating": 5
+                                    // },
+                                    "author": {
+                                        "@type": "Person",
+                                        "name": review.reviewerId
+                                    },
+                                    "reviewBody": review.comment,
+                                    "datePublished": review.date instanceof Date ? review.date.toISOString() : new Date(review.date).toISOString()
+                                };
+
+                                const userHasLiked = review.likes && currentUserId && review.likes.includes(currentUserId);
+
+                                return (
+                                    <div key={review.id} className="p-5 rounded-xl shadow-lg border border-gray-100" style={{backgroundColor: '#fff8e7'}}>
+                                        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(reviewSchema) }} />
+
+                                        <div className="flex items-center mb-4">
+                                            <div className="w-10 h-10 bg-custom-beige rounded-full flex items-center justify-center text-gray-800 font-bold text-lg mr-3 shadow-sm">
+                                                {review.reviewerId ? review.reviewerId.charAt(0).toUpperCase() : 'RN'}
+                                            </div>
+                                            <div>
+                                                <p className="font-semibold text-gray-800">{review.reviewerId}</p>
+                                                <p className="text-sm text-gray-600">{review.nursingField}</p>
+                                                <p className="text-xs text-gray-500">
+                                                    {review.date instanceof Date ? review.date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
+                                                </p>
+                                            </div>
+                                            {/* Removed StarRating display */}
+                                            {/* <div className="ml-auto">
+                                                <StarRating rating={review.stars} onRatingChange={() => {}} readOnly={true} />
+                                            </div> */}
+                                        </div>
+
+                                        <p className="text-gray-800 leading-relaxed mb-4 text-base">
+                                            {review.comment}
+                                        </p>
+
+                                        <div className="flex items-center gap-4 border-t border-gray-100 pt-3 mt-3">
+                                            <button
+                                                onClick={() => handleLikeReview(review.id)}
+                                                className={`flex items-center transition-colors ${userHasLiked ? 'text-blue-600' : 'text-gray-600 hover:text-blue-500'}`}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
+                                                </svg>
+                                                Like ({review.likes ? review.likes.length : 0})
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    if (!currentUserId || currentUserIsAnonymous) {
+                                                        showMessage('Login or Sign Up to add a comment.', 'info');
+                                                        setShowAuthModal(true);
+                                                    } else {
+                                                        setShowCommentInput(prev => ({ ...prev, [review.id]: !prev[review.id] }));
+                                                    }
+                                                }}
+                                                className="flex items-center text-gray-600 hover:text-green-500 transition-colors"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M18 13V5a2 2 0 00-2-2H4a2 2 0 00-2 2v8a2 2 0 002 2h3l3 3 3-3h3a2 2 0 002-2zM5 7a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1zm1 3a1 1 0 100 2h3a1 1 0 100-2H6z" clipRule="evenodd" />
+                                                </svg>
+                                                Comment ({review.comments ? review.comments.length : 0})
+                                            </button>
+                                        </div>
+
+                                        {/* Comments Section */}
+                                        <div className="mt-4 border-t border-gray-100 pt-4">
+                                            <h4 className="text-lg font-semibold text-gray-700 mb-3">Comments on this review:</h4> {/* Changed heading for clarity */}
+                                            {review.comments && review.comments.length > 0 ? (
+                                                <div className="space-y-3">
+                                                    {review.comments.map((comment, commentIndex) => (
+                                                        <div key={comment.date.getTime() + '_' + commentIndex} className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700 border border-gray-100">
+                                                            <div className="flex items-center mb-1">
+                                                                <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-800 text-xs font-semibold mr-2">
+                                                                    {comment.userId ? comment.userId.charAt(0).toUpperCase() : 'U'}
+                                                                </div>
+                                                                <p className="font-medium text-gray-800">{comment.userId}</p>
+                                                                <p className="text-xs text-gray-500 ml-auto">
+                                                                    {comment.date instanceof Date ? comment.date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
+                                                                </p>
+                                                            </div>
+                                                            <p className="ml-8 text-gray-700">{comment.text}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-gray-500">No comments on this review yet.</p>
+                                            )}
+                                            {/* Add Comment Input */}
+                                            {showCommentInput[review.id] && currentUserId && !currentUserIsAnonymous && (
+                                                <div className="flex mt-2">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Write a comment..."
+                                                        className="flex-grow p-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter' && e.target.value.trim()) {
+                                                                handleAddCommentToReview(review.id, e.target.value);
+                                                                e.target.value = ''; // Clear input after posting
+                                                            }
+                                                        }}
+                                                        value={commentText[review.id] || ''}
+                                                        onChange={(e) => setCommentText(prev => ({ ...prev, [review.id]: e.target.value }))}
+                                                        maxLength={MAX_CHAR_LIMIT} // Enforce max length for comment text
+                                                    />
+                                                    <button
+                                                        className="submit-comment-btn bg-custom-beige text-gray-800 px-4 py-2 rounded-r-md hover:opacity-90 transition duration-200 btn-hover-scale"
+                                                        onClick={() => {
+                                                            const valueToPost = commentText[review.id];
+                                                            handleAddCommentToReview(review.id, valueToPost);
+                                                        }}
+                                                    >
+                                                        Post
+                                                    </button>
+                                                </div>
+                                            )}
+                                            {commentSuccessMessage[review.id] && (
+                                                <p className="text-green-600 text-sm mt-2">{commentSuccessMessage[review.id]}</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </section>
             </div>
         </ErrorBoundary>
     );
