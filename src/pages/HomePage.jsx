@@ -144,8 +144,8 @@ const HomePage = () => {
                 <div className="relative z-10 max-w-3xl mx-auto">
                     <h1 className="text-5xl md:text-6xl lg:text-7xl font-extrabold mb-6 leading-tight animate-fade-in-down drop-shadow-md">RNTea: Real Nurse Truth</h1>
                     <p className="text-xl md:text-2xl mb-10 text-gray-700 animate-fade-in-up"> For nurses, by nurses — unfiltered and anonymous. Not your hospital’s suggestion box. </p>
-                    {/* Original Link to scroll to the ReviewsHubPage section */}
-                    <Link to="#full-reviews-hub" className="bg-white text-gray-800 hover:bg-gray-100 font-bold py-3 px-10 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-110 hover:shadow-2xl border border-gray-200 animate-fade-in-up antialiased"> View All Reviews </Link>
+                    {/* Updated Link to scroll to the How It Works section */}
+                    <Link to="#how-it-works" className="bg-white text-gray-800 hover:bg-gray-100 font-bold py-3 px-10 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-110 hover:shadow-2xl border border-gray-200 animate-fade-in-up antialiased"> Get Started </Link>
                 </div>
             </section>
 
@@ -171,7 +171,7 @@ const HomePage = () => {
                     </div>
 
                     {/* How It Works Sub-section, now part of the 'about' section */}
-                    <div className="text-center py-16 rounded-lg shadow-inner"> {/* Removed bg-custom-beige here */}
+                    <div id="how-it-works" className="text-center py-16 rounded-lg shadow-inner"> {/* Added id="how-it-works" here */}
                         <h2 className="text-4xl md:text-5xl font-bold text-gray-800 mb-12">How It Works</h2>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-12 max-w-5xl mx-auto"> {/* Added max-w-5xl and mx-auto for center alignment */}
                             {/* Step 1 */}
@@ -209,6 +209,12 @@ const HomePage = () => {
                                 <h3 className="text-2xl font-semibold text-gray-800 mb-3">Browse by hospital, doctor, or theme</h3>
                                 <p className="text-lg text-gray-700 leading-relaxed">The real reviews doctors never see.</p>
                             </div>
+                        </div>
+                        {/* "Ready To Get Some Tea?" Button - moved here */}
+                        <div className="text-center mt-12"> {/* Added mt-12 for top margin */}
+                            <Link to="#full-reviews-hub" className="bg-custom-beige text-gray-800 hover:bg-gray-100 font-bold py-3 px-10 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-110 hover:shadow-2xl border border-gray-200 animate-fade-in antialiased">
+                                Ready To Get Some Tea?
+                            </Link>
                         </div>
                     </div>
                 </div>
