@@ -19,19 +19,34 @@ const HomePage = () => {
 
 
     useEffect(() => {
-        // Scroll to specific section if hash exists in URL
+        // Scroll to specific section if hash exists in URL on initial load or hash change
         if (location.hash) {
             const id = location.hash.substring(1); // Get the id without '#'
-            const element = document.getElementById(id);
-            if (element) {
-                // Use setTimeout to ensure the page has rendered and the fixed header is in place
-                // before attempting to scroll. Adjust delay if needed.
+            const targetElement = document.getElementById(id);
+            const headerElement = document.querySelector('header'); // Select the header dynamically
+
+            if (targetElement) {
+                // Delay slightly to ensure elements (especially header) are fully rendered and measured
                 setTimeout(() => {
-                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }, 100); // Small delay to allow layout to settle
+                    let offset = 0;
+                    if (headerElement) {
+                        // Get the computed height of the header
+                        offset = headerElement.offsetHeight;
+                    }
+
+                    // Calculate the position to scroll to, accounting for the fixed header
+                    const elementPosition = targetElement.getBoundingClientRect().top + window.pageYOffset;
+                    const offsetPosition = elementPosition - offset - 10; // Added 10px extra padding
+
+                    window.scrollTo({
+                        top: offsetPosition,
+                        behavior: "smooth"
+                    });
+                }, 150); // Small delay to allow layout to settle after navigation
             }
         }
-    }, [location.hash]); // Rerun when the URL hash changes
+    }, [location.hash]); // Rerun when location.hash changes
+
 
     useEffect(() => {
         // Scroll Reveal Animations using Intersection Observer
@@ -72,7 +87,7 @@ const HomePage = () => {
         // NEW: Honeypot check - if this field is filled, it's likely a bot
         if (honeypot) {
             console.warn("Honeypot field filled. Likely a bot submission. Discarding.");
-            showMessage('Thank you for your message!', 'success'); // Show success to bot, but don't process
+            showMessage('Thank you for your message!', 'success');
             setIsSubmitting(false);
             return;
         }
@@ -144,7 +159,7 @@ const HomePage = () => {
                 <div className="relative z-10 max-w-3xl mx-auto">
                     <h1 className="text-5xl md:text-6xl lg:text-7xl font-extrabold mb-6 leading-tight animate-fade-in-down drop-shadow-md">RNTea: Real Nurse Truth</h1>
                     <p className="text-xl md:text-2xl mb-10 text-gray-700 animate-fade-in-up"> For nurses, by nurses — unfiltered and anonymous. Not your hospital’s suggestion box. </p>
-                    {/* Updated Link to scroll to the How It Works section */}
+                    {/* Link to how-it-works section */}
                     <Link to="#how-it-works" className="bg-white text-gray-800 hover:bg-gray-100 font-bold py-3 px-10 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-110 hover:shadow-2xl border border-gray-200 animate-fade-in-up antialiased"> Get Started </Link>
                 </div>
             </section>
@@ -212,6 +227,7 @@ const HomePage = () => {
                         </div>
                         {/* "Ready To Get Some Tea?" Button - moved here */}
                         <div className="text-center mt-12"> {/* Added mt-12 for top margin */}
+                            {/* Link to full-reviews-hub section */}
                             <Link to="#full-reviews-hub" className="bg-custom-beige text-gray-800 hover:bg-gray-100 font-bold py-3 px-10 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-110 hover:shadow-2xl border border-gray-200 animate-fade-in antialiased">
                                 Ready To Get Some Tea?
                             </Link>
