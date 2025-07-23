@@ -142,30 +142,74 @@ const HomePage = () => {
                     </svg>
                 </div>
                 <div className="relative z-10 max-w-3xl mx-auto">
-                    <h1 className="text-5xl md:text-6xl lg:text-7xl font-extrabold mb-6 leading-tight animate-fade-in-down drop-shadow-md">RNTea: Rate, Navigate, Trust.</h1>
-                    <p className="text-xl md:text-2xl mb-10 text-gray-700 animate-fade-in-up"> Do you really trust your Doctors? Let's hear from experienced RNs for a change. </p>
+                    <h1 className="text-5xl md:text-6xl lg:text-7xl font-extrabold mb-6 leading-tight animate-fade-in-down drop-shadow-md">RNTea: Real Nurse Truth</h1>
+                    <p className="text-xl md:text-2xl mb-10 text-gray-700 animate-fade-in-up"> For nurses, by nurses — unfiltered and anonymous. Not your hospital’s suggestion box. </p>
                     {/* Original Link to scroll to the ReviewsHubPage section */}
                     <Link to="#full-reviews-hub" className="bg-white text-gray-800 hover:bg-gray-100 font-bold py-3 px-10 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-110 hover:shadow-2xl border border-gray-200 animate-fade-in-up antialiased"> View All Reviews </Link>
                 </div>
             </section>
 
-            {/* About Us Section: Brand Philosophy */}
+            {/* About Us Section: Brand Philosophy and How It Works */}
             <section id="about" className="bg-white py-20 px-6 md:px-10 lg:px-16 mx-4 mt-2 mb-1 rounded-lg shadow-lg section-hover scroll-margin-top-adjusted revealable">
-                <div className="container mx-auto flex flex-col md:flex-row items-center gap-12">
-                    <div className="md:w-1/2 flex justify-center order-2 md:order-1 animate-slide-in-left">
-                        {/* Image of a collage of nurses */}
-                       <img src="/Express-collage.jpg" alt="Collage of diverse medical professionals working together" className="rounded-lg shadow-xl border-4 w-full max-w-md object-cover" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x300/F0F0F0/888888?text=Image+Not+Loaded'; }} />
+                <div className="container mx-auto">
+                    {/* Our Philosophy Sub-section */}
+                    <div className="flex flex-col md:flex-row items-center gap-12 mb-20"> {/* Added mb-20 for spacing */}
+                        <div className="md:w-1/2 flex justify-center order-2 md:order-1 animate-slide-in-left">
+                            {/* Image of a collage of nurses */}
+                           <img src="/Express-collage.jpg" alt="Collage of diverse medical professionals working together" className="rounded-lg shadow-xl border-4 w-full max-w-md object-cover" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x300/F0F0F0/888888?text=Image+Not+Loaded'; }} />
+                        </div>
+                        <div className="md:w-1/2 text-center md:text-left order-1 md:order-2 animate-slide-in-right">
+                            <h2 className="text-4xl md:text-5xl font-bold text-gray-800 mb-6">Our Philosophy</h2>
+                            <p className="text-lg text-gray-700 leading-relaxed mb-4 antialiased">
+                                At RNTea, we believe nurses deserve a space to speak their truth. Created by RNs for RNs, our platform is a no-fluff, judgment-free zone where you can safely and anonymously share the real stories, frustrations, and unspoken realities of working alongside doctors and within the healthcare system.
+                            </p>
+                            <p className="text-lg text-gray-700 leading-relaxed antialiased">
+                                Think of it as the breakroom—but digital, secure, and way more therapeutic. Whether you’re venting, validating, or just vibing with others who get it, RNTea is where your voice matters. Sip, spill, and scroll with the tribe that really understands what happens when the patient door closes.
+                            </p>
+                            <p className="text-lg text-gray-700 leading-relaxed mt-4 font-semibold antialiased">Now spill some RNTea!</p>
+                        </div>
                     </div>
-                    <div className="md:w-1/2 text-center md:text-left order-1 md:order-2 animate-slide-in-right">
-                        <h2 className="text-4xl md:text-5xl font-bold text-gray-800 mb-6">Our Philosophy</h2>
-                        <p className="text-lg text-gray-700 leading-relaxed mb-4 antialiased">
-                            At RNTea, we believe in transparency and community to help you find the best care.
-                            Discover insights, share experiences, and make informed decisions with confidence.
-                        </p>
-                        <p className="text-lg text-gray-700 leading-relaxed antialiased">
-                            Our platform empowers Registered Nurses to share their honest experiences, providing a unique and invaluable perspective on healthcare providers. We aim to build a trusted resource for patients seeking reliable and empathetic care, while also helping nurses navigate career decisions whether it be short term travel contracts or a potential employer.
-                        </p>
-                        <p className="text-lg text-gray-700 leading-relaxed mt-4 font-semibold antialiased">Now spill some RNTea!</p>
+
+                    {/* How It Works Sub-section, now part of the 'about' section */}
+                    <div className="text-center py-16 rounded-lg shadow-inner"> {/* Removed bg-custom-beige here */}
+                        <h2 className="text-4xl md:text-5xl font-bold text-gray-800 mb-12">How It Works</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-12 max-w-5xl mx-auto"> {/* Added max-w-5xl and mx-auto for center alignment */}
+                            {/* Step 1 */}
+                            <div className="group flex flex-col items-center p-6 bg-white rounded-lg shadow-md animate-fade-in transition duration-300 ease-in-out transform hover:scale-105 hover:shadow-lg"> {/* Added group class */}
+                                <div className="mb-4">
+                                    {/* Share anonymously icon */}
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 text-custom-orange transition duration-300 ease-in-out group-hover:text-[#FFDEB5]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1"> {/* Changed group-hover:text-custom-beige to group-hover:text-[#FFDEB5] */}
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                    </svg>
+                                </div>
+                                <h3 className="text-2xl font-semibold text-gray-800 mb-3">Share anonymously</h3>
+                                <p className="text-lg text-gray-700 leading-relaxed">Submit your experience with no names, no risk.</p>
+                            </div>
+
+                            {/* Step 2 */}
+                            <div className="group flex flex-col items-center p-6 bg-white rounded-lg shadow-md animate-fade-in delay-100 transition duration-300 ease-in-out transform hover:scale-105 hover:shadow-lg"> {/* Added group class */}
+                                <div className="mb-4">
+                                    {/* Nurses-only vibes icon */}
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 text-custom-orange transition duration-300 ease-in-out group-hover:text-[#FFDEB5]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1"> {/* Changed group-hover:text-custom-beige to group-hover:text-[#FFDEB5] */}
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                </div>
+                                <h3 className="text-2xl font-semibold text-gray-800 mb-3">Nurses-only vibes</h3>
+                                <p className="text-lg text-gray-700 leading-relaxed">Only nurses get full access.</p>
+                            </div>
+
+                            {/* Step 3 */}
+                            <div className="group flex flex-col items-center p-6 bg-white rounded-lg shadow-md animate-fade-in delay-200 transition duration-300 ease-in-out transform hover:scale-105 hover:shadow-lg"> {/* Added group class */}
+                                <div className="mb-4">
+                                    {/* Browse icon */}
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 text-custom-orange transition duration-300 ease-in-out group-hover:text-[#FFDEB5]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1"> {/* Changed group-hover:text-custom-beige to group-hover:text-[#FFDEB5] */}
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                    </svg>
+                                </div>
+                                <h3 className="text-2xl font-semibold text-gray-800 mb-3">Browse by hospital, doctor, or theme</h3>
+                                <p className="text-lg text-gray-700 leading-relaxed">The real reviews doctors never see.</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>

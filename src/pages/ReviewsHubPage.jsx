@@ -138,7 +138,7 @@ class ErrorBoundary extends React.Component {
         if (this.state.hasError) {
             // You can render any custom fallback UI
             return (
-                <div className="flex flex-col items-center justify-center min-h-[calc(100vh-120px)] p-4 bg-red-100 text-red-800 rounded-lg shadow-md">
+                <div className="flex flex-col items-center justify-center min-h-[calc(10vh-120px)] p-4 bg-red-100 text-red-800 rounded-lg shadow-md">
                     <h1 className="text-3xl font-bold mb-4">Oops! Something went wrong.</h1>
                     <p className="text-lg text-center mb-2">We're sorry, but there was an error loading this section.</p>
                     <p className="text-sm text-red-600 text-center">
@@ -371,35 +371,55 @@ const ReviewsHubPage = () => {
             for (const docRef of querySnapshot.docs) {
                 const data = docRef.data();
                 if (data.name) {
-                    // Calculate average rating and numReviews from the reviews subcollection
-                    const reviewsQuery = query(collection(db, `artifacts/${appId}/public/data/hospitals/${hospital.id}/doctors/${docRef.id}/reviews`));
-                    const reviewsSnapshot = await getDocs(reviewsQuery);
-                    let totalStars = 0;
-                    let numReviews = 0;
-                    let totalComments = 0; // Initialize total comments for this doctor
+                    try {
+                        // Calculate average rating and numReviews from the reviews subcollection
+                        const reviewsPath = `artifacts/${appId}/public/data/hospitals/${hospital.id}/doctors/${docRef.id}/reviews`;
+                        console.log("ReviewsHubPage: Attempting to read reviews from:", reviewsPath);
+                        const reviewsQuery = query(collection(db, reviewsPath));
+                        const reviewsSnapshot = await getDocs(reviewsQuery);
+                        console.log("ReviewsHubPage: Successfully read reviews. Count:", reviewsSnapshot.size);
 
-                    for (const reviewDoc of reviewsSnapshot.docs) {
-                        const reviewData = reviewDoc.data();
-                        if (reviewData.stars) { // Assuming reviews have a 'stars' field
-                            totalStars += reviewData.stars;
-                            numReviews++;
+                        let totalStars = 0;
+                        let numReviews = 0;
+                        let totalComments = 0; // Initialize total comments for this doctor
+
+                        for (const reviewDoc of reviewsSnapshot.docs) {
+                            const reviewData = reviewDoc.data();
+                            if (reviewData.stars) { // Assuming reviews have a 'stars' field
+                                totalStars += reviewData.stars;
+                                numReviews++;
+                            }
+                            // Fetch comments for each review to get an accurate count
+                            const commentsPath = `artifacts/${appId}/public/data/hospitals/${hospital.id}/doctors/${docRef.id}/reviews/${reviewDoc.id}/comments`;
+                            console.log("ReviewsHubPage: Attempting to read comments from:", commentsPath);
+                            const commentsQuery = query(collection(db, commentsPath));
+                            const commentsSnapshot = await getDocs(commentsQuery);
+                            console.log("ReviewsHubPage: Successfully read comments. Count:", commentsSnapshot.size);
+                            totalComments += commentsSnapshot.size; // Add the number of comments for this review
                         }
-                        // Fetch comments for each review to get an accurate count
-                        const commentsQuery = query(collection(db, `artifacts/${appId}/public/data/hospitals/${hospital.id}/doctors/${docRef.id}/reviews/${reviewDoc.id}/comments`));
-                        const commentsSnapshot = await getDocs(commentsQuery);
-                        totalComments += commentsSnapshot.size; // Add the number of comments for this review
+
+                        const averageRating = numReviews > 0 ? (totalStars / numReviews) : 0;
+
+                        fetchedDoctors.push({
+                            id: docRef.id,
+                            hospitalId: hospital.id,
+                            ...data,
+                            averageRating: averageRating,
+                            numReviews: numReviews,
+                            numComments: totalComments // Add total comments to doctor data
+                        });
+                    } catch (innerError) {
+                        console.error(`ReviewsHubPage: Error during subcollection fetch for doctor ID ${docRef.id}:`, innerError);
+                        fetchedDoctors.push({
+                            id: docRef.id,
+                            hospitalId: hospital.id,
+                            ...data,
+                            averageRating: 0,
+                            numReviews: 0,
+                            numComments: 0,
+                            error: `Error loading reviews/comments: ${innerError.message}` // Add an error indicator
+                        });
                     }
-
-                    const averageRating = numReviews > 0 ? (totalStars / numReviews) : 0;
-
-                    fetchedDoctors.push({
-                        id: docRef.id,
-                        hospitalId: hospital.id,
-                        ...data,
-                        averageRating: averageRating,
-                        numReviews: numReviews,
-                        numComments: totalComments // Add total comments to doctor data
-                    });
                 }
             }
 
@@ -418,7 +438,7 @@ const ReviewsHubPage = () => {
             setDisplayedDoctors(filteredDoctors);
 
         }, (error) => {
-            console.error("ReviewsHubPage: Error fetching doctors with onSnapshot:", error);
+            console.error("ReviewsHubPage: Error fetching doctors with onSnapshot (outer listener):", error);
             showMessage('Error loading doctors.', 'error');
             setLoadingDoctors(false);
             setNoDoctorsFound(true);

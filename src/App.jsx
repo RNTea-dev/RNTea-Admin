@@ -620,7 +620,7 @@ export default function App() {
                                 className={`group relative overflow-hidden text-lg text-gray-700 font-medium transition duration-300 ease-in-out hover:text-custom-beige ${isLinkActive('/reviews') ? 'font-bold' : ''}`}
                             >
                                 <span className="relative inline-block">
-                                    Reviews
+                                    Browse Tea
                                     <span className="absolute left-0 bottom-0 h-0.5 bg-[#CC5500] w-0 transition-all duration-300 group-hover:w-full"></span>
                                 </span>
                             </Link>
