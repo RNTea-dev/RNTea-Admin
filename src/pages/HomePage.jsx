@@ -190,44 +190,43 @@ const HomePage = () => {
                         <h2 className="text-4xl md:text-5xl font-bold text-gray-800 mb-12">How It Works</h2>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-12 max-w-5xl mx-auto"> {/* Added max-w-5xl and mx-auto for center alignment */}
                             {/* Step 1 */}
-                            <div className="group flex flex-col items-center p-6 bg-white rounded-lg shadow-md animate-fade-in transition duration-300 ease-in-out transform hover:scale-105 hover:shadow-lg"> {/* Added group class */}
+                            <Link to="#full-reviews-hub" className="group flex flex-col items-center p-6 bg-white rounded-lg shadow-md animate-fade-in transition duration-300 ease-in-out transform hover:scale-105 hover:shadow-lg cursor-pointer"> {/* Wrapped with Link */}
                                 <div className="mb-4">
                                     {/* Share anonymously icon */}
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 text-custom-orange transition duration-300 ease-in-out group-hover:text-[#FFDEB5]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1"> {/* Changed group-hover:text-custom-beige to group-hover:text-[#FFDEB5] */}
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 text-custom-orange transition duration-300 ease-in-out group-hover:text-[#FFDEB5]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                                     </svg>
                                 </div>
                                 <h3 className="text-2xl font-semibold text-gray-800 mb-3">Share anonymously</h3>
                                 <p className="text-lg text-gray-700 leading-relaxed">Submit your experience with no names, no risk.</p>
-                            </div>
+                            </Link>
 
                             {/* Step 2 */}
-                            <div className="group flex flex-col items-center p-6 bg-white rounded-lg shadow-md animate-fade-in delay-100 transition duration-300 ease-in-out transform hover:scale-105 hover:shadow-lg"> {/* Added group class */}
+                            <Link to="#full-reviews-hub" className="group flex flex-col items-center p-6 bg-white rounded-lg shadow-md animate-fade-in delay-100 transition duration-300 ease-in-out transform hover:scale-105 hover:shadow-lg cursor-pointer"> {/* Wrapped with Link */}
                                 <div className="mb-4">
                                     {/* Nurses-only vibes icon */}
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 text-custom-orange transition duration-300 ease-in-out group-hover:text-[#FFDEB5]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1"> {/* Changed group-hover:text-custom-beige to group-hover:text-[#FFDEB5] */}
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 text-custom-orange transition duration-300 ease-in-out group-hover:text-[#FFDEB5]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                     </svg>
                                 </div>
                                 <h3 className="text-2xl font-semibold text-gray-800 mb-3">Nurses-only vibes</h3>
                                 <p className="text-lg text-gray-700 leading-relaxed">Only nurses get full access.</p>
-                            </div>
+                            </Link>
 
                             {/* Step 3 */}
-                            <div className="group flex flex-col items-center p-6 bg-white rounded-lg shadow-md animate-fade-in delay-200 transition duration-300 ease-in-out transform hover:scale-105 hover:shadow-lg"> {/* Added group class */}
+                            <Link to="#full-reviews-hub" className="group flex flex-col items-center p-6 bg-white rounded-lg shadow-md animate-fade-in delay-200 transition duration-300 ease-in-out transform hover:scale-105 hover:shadow-lg cursor-pointer"> {/* Wrapped with Link */}
                                 <div className="mb-4">
                                     {/* Browse icon */}
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 text-custom-orange transition duration-300 ease-in-out group-hover:text-[#FFDEB5]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1"> {/* Changed group-hover:text-custom-beige to group-hover:text-[#FFDEB5] */}
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 text-custom-orange transition duration-300 ease-in-out group-hover:text-[#FFDEB5]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                                     </svg>
                                 </div>
                                 <h3 className="text-2xl font-semibold text-gray-800 mb-3">Browse by hospital, doctor, or theme</h3>
                                 <p className="text-lg text-gray-700 leading-relaxed">The real reviews doctors never see.</p>
-                            </div>
+                            </Link>
                         </div>
-                        {/* "Ready To Get Some Tea?" Button - moved here */}
+                        {/* "Ready To Get Some Tea?" Button */}
                         <div className="text-center mt-12"> {/* Added mt-12 for top margin */}
-                            {/* Link to full-reviews-hub section */}
                             <Link to="#full-reviews-hub" className="bg-custom-beige text-gray-800 hover:bg-gray-100 font-bold py-3 px-10 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-110 hover:shadow-2xl border border-gray-200 animate-fade-in antialiased">
                                 Ready To Get Some Tea?
                             </Link>
@@ -333,12 +332,12 @@ const HomePage = () => {
                                             <path d="M714.163 519.284L1160.89 0H1055.03L667.137 450.887L357.328 0H0L468.492 671.544L0 1226.37H105.866L515.414 750.206L852.076 1226.37H1200L714.163 519.284ZM569.165 687.828L521.617 619.927L144.036 79.6262H302.46L603.935 515.043L651.483 582.944L1055.03 1147.37H896.59L569.165 687.828Z"/>
                                         </svg>
                                     </a>
-                                    <a href="https://linkedin.com/company/rntea-4a8149371/" target="_blank" rel="noopener noreferrer" className="social-icon-hover text-blue-700 hover:text-blue-800 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
+                                    <a href="https://linkedin.com/company/rntea/" target="_blank" rel="noopener noreferrer" className="social-icon-hover text-blue-700 hover:text-blue-800 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
                                         <svg xmlns="http://www.w3.org/2000/svg" className="w-full h-full" fill="currentColor" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet">
                                             <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
                                         </svg>
                                     </a>
-                                    <a href="https://instagram.com/rntea_official" target="_blank" rel="noopener noreferrer" className="social-icon-hover text-pink-500 hover:text-pink-600 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
+                                    <a href="https://www.instagram.com/myrntea/" target="_blank" rel="noopener noreferrer" className="social-icon-hover text-pink-500 hover:text-pink-600 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
                                         {/* Modern Instagram icon - removed explicit width/height from SVG, relying on parent a tag and flex centering */}
                                         <svg className="w-full h-full" fill="currentColor" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet">
                                             <path d="M7.8 2h8.4C19.4 2 22 4.6 22 7.8v8.4c0 3.2-2.6 5.8-5.8 5.8H7.8C4.6 22 2 19.4 2 16.2V7.8C2 4.6 4.6 2 7.8 2zm-.2 2A2.2 2.2 0 0 0 5.4 6.2v8.4c0 1.2.9 2.2 2.2 2.2h8.4a2.2 2.2 0 0 0 2.2-2.2V6.2A2.2 2.2 0 0 0 16.2 4H7.6zM12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm6.5-3A1.5 1.5 0 1 0 18.5 7 1.5 1.5 0 0 0 18.5 4z"/>
