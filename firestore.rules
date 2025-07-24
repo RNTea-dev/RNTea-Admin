@@ -2,44 +2,60 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Function to check if the requesting user is an admin
     function isAdmin() {
-      return request.auth != null && exists(/databases/$(database)/documents/artifacts/rntea-cca78/admins/$(request.auth.uid));
+      return request.auth != null && exists(/databases/$(database)/documents/artifacts/$(appId)/admins/$(request.auth.uid));
     }
 
+    // Admins collection: Allows signed-in users to read (e.g., to check if they are admin), but no one can write directly.
     match /artifacts/{appId}/admins/{adminUid} {
       allow read: if request.auth != null;
       allow write: if false;
     }
 
+    // Hospitals collection: Publicly readable, signed-in users can create, only admins can update/delete.
     match /artifacts/{appId}/public/data/hospitals/{hospitalId} {
-      allow read: if true;
-      allow create: if request.auth != null;
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow read: if true; // Anyone can read
+      allow create: if request.auth != null; // Signed-in users can create hospitals
+      allow update: if isAdmin(); // Only admins can update
+      allow delete: if isAdmin(); // Only admins can delete
     }
 
+    // Doctors subcollection: Publicly readable, signed-in users can create, only admins can update/delete.
     match /artifacts/{appId}/public/data/hospitals/{hospitalId}/doctors/{doctorId} {
-      allow read: if true;
-      allow create: if request.auth != null;
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
-
-      allow update: if isAdmin() || (
-                      request.auth != null &&
-                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ratings']) &&
-                      request.resource.data.ratings.size() > resource.data.ratings.size()
-                    );
+      allow read: if true; // Anyone can read
+      allow create: if request.auth != null; // Signed-in users can create doctors
+      allow update: if isAdmin(); // Only admins can update
+      allow delete: if isAdmin(); // Only admins can delete
     }
 
+    // Reviews subcollection: Publicly readable, signed-in users can create their own reviews, only admins can update/delete any review.
+    match /artifacts/{appId}/public/data/hospitals/{hospitalId}/doctors/{doctorId}/reviews/{reviewId} {
+      allow read: if true; // Anyone can read reviews
+      allow create: if request.auth != null && request.resource.data.reviewerId == request.auth.uid; // Signed-in user can create their own review
+      allow update: if isAdmin(); // Only admins can update any review
+      allow delete: if isAdmin(); // Only admins can delete any review
+    }
+
+    // Comments subcollection (under reviews): Publicly readable, signed-in users can create their own comments, only admins can update/delete any comment.
+    match /artifacts/{appId}/public/data/hospitals/{hospitalId}/doctors/{doctorId}/reviews/{reviewId}/comments/{commentId} {
+      allow read: if true; // Anyone can read comments
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid; // Signed-in user can create their own comment
+      allow update: if isAdmin(); // Only admins can update any comment
+      allow delete: if isAdmin(); // Only admins can delete any comment
+    }
+
+    // Likes subcollection (under reviews): Publicly readable (to get count), signed-in users can create/delete their own like.
+    match /artifacts/{appId}/public/data/hospitals/{hospitalId}/doctors/{doctorId}/reviews/{reviewId}/likes/{likeId} {
+      allow read: if true; // Anyone can read likes (to get count)
+      allow create: if request.auth != null && request.auth.uid == likeId; // Signed-in user can like (create a doc with their UID)
+      allow delete: if request.auth != null && request.auth.uid == likeId; // Signed-in user can unlike (delete their own doc)
+      // No 'update' rule for likes, as they are typically toggled (created/deleted)
+    }
+
+    // User-specific data: Users can only read and write to their own private data.
     match /artifacts/{appId}/users/{userId}/{documents=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-
-    match /artifacts/{appId}/public/data/reviewLikes/{likeId} {
-      allow read, write: if false;
-    }
-    match /artifacts/{appId}/public/data/reviewComments/{commentId} {
-      allow read, write: if false;
     }
   }
 }
