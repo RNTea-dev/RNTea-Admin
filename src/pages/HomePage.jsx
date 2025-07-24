@@ -321,7 +321,7 @@ const HomePage = () => {
                             <div>
                                 <h3 className="text-xl font-semibold text-gray-800 mb-4">Connect with Us</h3>
                                 <div className="flex space-x-6 justify-start">
-                                    <a href="https://facebook.com/rntea" target="_blank" rel="noopener noreferrer" className="social-icon-hover text-blue-600 hover:text-blue-700 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
+                                    <a href="https://www.facebook.com/profile.php?id=61578820435340" target="_blank" rel="noopener noreferrer" className="social-icon-hover text-blue-600 hover:text-blue-700 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
                                         <svg xmlns="http://www.w3.org/2000/svg" className="w-full h-full" fill="currentColor" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet">
                                             <path d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808c-3.271 0-4.192 1.552-4.192 4.615v3.385z"/>
                                         </svg>
