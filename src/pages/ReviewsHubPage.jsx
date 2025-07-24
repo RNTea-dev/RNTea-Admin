@@ -14,7 +14,8 @@ import {
     addDoc, // Added addDoc for creating new documents in subcollections
     deleteDoc, // Added deleteDoc for removing likes
     query, // Added query for fetching subcollections
-    getDocs // Added getDocs for one-time fetches (e.g., calculating average rating)
+    getDocs, // Added getDocs for one-time fetches (e.g., calculating average rating)
+    runTransaction // Added runTransaction for atomic updates
 } from 'firebase/firestore';
 
 // Define explicit words for content filtering
@@ -191,6 +192,7 @@ const ReviewsHubPage = () => {
     const [loadingReviews, setLoadingReviews] = useState(false);
     const [noReviewsForDoctor, setNoReviewsForDoctor] = useState(false);
     const [reviewText, setReviewText] = useState('');
+    // Removed starRating state
     const [nursingField, setNursingField] = useState(NURSING_FIELDS[0]); // State for selected nursing field
     const [searchQuery, setSearchQuery] = useState(''); // NEW: State for search input
     const [filteredNursingFields, setFilteredNursingFields] = useState([]); // NEW: State for filtered suggestions
@@ -365,63 +367,23 @@ const ReviewsHubPage = () => {
 
         // Fetch doctors from the subcollection
         const doctorsColRef = collection(db, `artifacts/${appId}/public/data/hospitals/${hospital.id}/doctors`);
-        const unsubscribeDoctors = onSnapshot(doctorsColRef, async (querySnapshot) => {
+        const unsubscribeDoctors = onSnapshot(doctorsColRef, (querySnapshot) => {
             console.log("ReviewsHubPage: onSnapshot triggered for doctors.");
             const fetchedDoctors = [];
-            for (const docRef of querySnapshot.docs) {
+            querySnapshot.forEach((docRef) => {
                 const data = docRef.data();
                 if (data.name) {
-                    try {
-                        // Calculate average rating and numReviews from the reviews subcollection
-                        const reviewsPath = `artifacts/${appId}/public/data/hospitals/${hospital.id}/doctors/${docRef.id}/reviews`;
-                        console.log("ReviewsHubPage: Attempting to read reviews from:", reviewsPath);
-                        const reviewsQuery = query(collection(db, reviewsPath));
-                        const reviewsSnapshot = await getDocs(reviewsQuery);
-                        console.log("ReviewsHubPage: Successfully read reviews. Count:", reviewsSnapshot.size);
-
-                        let totalStars = 0;
-                        let numReviews = 0;
-                        let totalComments = 0; // Initialize total comments for this doctor
-
-                        for (const reviewDoc of reviewsSnapshot.docs) {
-                            const reviewData = reviewDoc.data();
-                            if (reviewData.stars) { // Assuming reviews have a 'stars' field
-                                totalStars += reviewData.stars;
-                                numReviews++;
-                            }
-                            // Fetch comments for each review to get an accurate count
-                            const commentsPath = `artifacts/${appId}/public/data/hospitals/${hospital.id}/doctors/${docRef.id}/reviews/${reviewDoc.id}/comments`;
-                            console.log("ReviewsHubPage: Attempting to read comments from:", commentsPath);
-                            const commentsQuery = query(collection(db, commentsPath));
-                            const commentsSnapshot = await getDocs(commentsQuery);
-                            console.log("ReviewsHubPage: Successfully read comments. Count:", commentsSnapshot.size);
-                            totalComments += commentsSnapshot.size; // Add the number of comments for this review
-                        }
-
-                        const averageRating = numReviews > 0 ? (totalStars / numReviews) : 0;
-
-                        fetchedDoctors.push({
-                            id: docRef.id,
-                            hospitalId: hospital.id,
-                            ...data,
-                            averageRating: averageRating,
-                            numReviews: numReviews,
-                            numComments: totalComments // Add total comments to doctor data
-                        });
-                    } catch (innerError) {
-                        console.error(`ReviewsHubPage: Error during subcollection fetch for doctor ID ${docRef.id}:`, innerError);
-                        fetchedDoctors.push({
-                            id: docRef.id,
-                            hospitalId: hospital.id,
-                            ...data,
-                            averageRating: 0,
-                            numReviews: 0,
-                            numComments: 0,
-                            error: `Error loading reviews/comments: ${innerError.message}` // Add an error indicator
-                        });
-                    }
+                    fetchedDoctors.push({
+                        id: docRef.id,
+                        hospitalId: hospital.id,
+                        ...data,
+                        // Read aggregated data directly from the doctor document
+                        averageRating: data.averageRating || 0,
+                        numReviews: data.numReviews || 0,
+                        numComments: data.numComments || 0
+                    });
                 }
-            }
+            });
 
             fetchedDoctors.sort((a, b) => a.name.localeCompare(b.name));
             console.log("ReviewsHubPage: Fetched Doctors from snapshot for selected hospital:", fetchedDoctors.length);
@@ -525,6 +487,9 @@ const ReviewsHubPage = () => {
                 specialty: newDoctor.specialty,
                 createdAt: new Date().toISOString(),
                 createdBy: currentUserId,
+                averageRating: 0, // Initialize on creation
+                numReviews: 0,    // Initialize on creation
+                numComments: 0    // Initialize on creation
             });
 
             showMessage(`Dr. ${newDoctor.name} added successfully to ${selectedHospital.name}!`, 'success');
@@ -711,6 +676,7 @@ const ReviewsHubPage = () => {
             showMessage('Please select or type your nursing field.', 'error');
             return;
         }
+        // Removed starRating validation
 
         const contentCheck = filterContent(reviewText);
         if (!contentCheck.isValid) {
@@ -724,9 +690,10 @@ const ReviewsHubPage = () => {
         try {
             // Reference to the reviews subcollection of the selected doctor
             const reviewsColRef = collection(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors/${selectedDoctor.id}/reviews`);
+            const doctorDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors/${selectedDoctor.id}`);
 
             const newReviewData = {
-                stars: 0, // Assuming a default or no star rating for now, or add a rating input
+                stars: 0, // Default to 0 stars as per user request to remove star rating input
                 comment: reviewText,
                 // CORRECTED: Use currentUserId (UID) for security rules match
                 reviewerId: currentUserId,
@@ -738,20 +705,44 @@ const ReviewsHubPage = () => {
             };
             console.log("ReviewsHubPage: Submitting new review data:", newReviewData);
 
-            // Add the new review document to the reviews subcollection
-            const docRef = await addDoc(reviewsColRef, newReviewData);
-            const newReviewId = docRef.id; // Get the ID of the newly created review document
+            await runTransaction(db, async (transaction) => {
+                // Add the new review document to the reviews subcollection
+                const docRef = doc(reviewsColRef); // Create a new doc ref with an auto-generated ID
+                transaction.set(docRef, newReviewData);
+                const newReviewId = docRef.id;
 
-            // Store a copy of the review in the user's private collection
-            const userReviewRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${newReviewId}`);
-            await setDoc(userReviewRef, {
-                ...newReviewData,
-                id: newReviewId, // Include the ID for the private copy
-                userId: currentUserId, // Explicitly use currentUserId for security rule match
+                // Store a copy of the review in the user's private collection
+                const userReviewRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${newReviewId}`);
+                transaction.set(userReviewRef, {
+                    ...newReviewData,
+                    id: newReviewId, // Include the ID for the private copy
+                    userId: currentUserId, // Explicitly use currentUserId for security rule match
+                });
+
+                // Update the doctor's review counts and average rating
+                const doctorSnap = await transaction.get(doctorDocRef);
+                if (doctorSnap.exists()) {
+                    const doctorData = doctorSnap.data();
+                    const currentNumReviews = doctorData.numReviews || 0;
+                    const currentTotalStars = (doctorData.averageRating || 0) * currentNumReviews; // Reconstruct total stars
+
+                    const updatedNumReviews = currentNumReviews + 1;
+                    const updatedTotalStars = currentTotalStars + newReviewData.stars;
+                    const updatedAverageRating = updatedNumReviews > 0 ? (updatedTotalStars / updatedNumReviews) : 0;
+
+                    transaction.update(doctorDocRef, {
+                        numReviews: updatedNumReviews,
+                        averageRating: updatedAverageRating,
+                    });
+                } else {
+                    console.warn("ReviewsHubPage: Doctor document not found for updating review counts.");
+                    // If doctor doc doesn't exist, it might be a new doctor added recently but not yet propagated.
+                    // For now, we'll proceed without updating counts, but in a real app, you might want to create it or handle this edge case.
+                }
             });
 
-
             setReviewText('');
+            // Removed starRating reset
             setNursingField(NURSING_FIELDS[0]);
             setSearchQuery('');
             showMessage('Review submitted successfully!', 'success');
@@ -789,6 +780,7 @@ const ReviewsHubPage = () => {
         try {
             // Reference to the comments subcollection of the specific review
             const commentsColRef = collection(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors/${selectedDoctor.id}/reviews/${reviewId}/comments`);
+            const doctorDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors/${selectedDoctor.id}`);
 
             const newCommentData = {
                 text: commentTextValue,
@@ -798,37 +790,47 @@ const ReviewsHubPage = () => {
                 date: new Date(),
             };
 
-            // Add the new comment document to the comments subcollection
-            const commentDocRef = await addDoc(commentsColRef, newCommentData);
-            const newCommentId = commentDocRef.id;
+            await runTransaction(db, async (transaction) => {
+                // Add the new comment document to the comments subcollection
+                const commentDocRef = doc(commentsColRef);
+                transaction.set(commentDocRef, newCommentData);
+                const newCommentId = commentDocRef.id;
 
-            // Update the user's private copy of the review with the new comment
-            // We need to ensure the private review document exists first before adding a subcollection
-            const userReviewDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}`);
-            const userReviewSnap = await getDoc(userReviewDocRef);
+                // Update the user's private copy of the review with the new comment
+                const userReviewDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}`);
+                const userReviewSnap = await transaction.get(userReviewDocRef);
 
-            if (!userReviewSnap.exists()) {
-                // If the private review document doesn't exist, create a minimal one
-                // This can happen if a user comments on someone else's review that they haven't reviewed themselves
-                const publicReviewDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors/${selectedDoctor.id}/reviews/${reviewId}`);
-                const publicReviewSnap = await getDoc(publicReviewDocRef);
-                if (publicReviewSnap.exists()) {
-                    await setDoc(userReviewDocRef, {
-                        ...publicReviewSnap.data(), // Copy public review data
-                        id: reviewId,
-                        userId: currentUserId, // Ensure the private review doc is owned by current user
-                        hospitalId: selectedHospital.id,
-                        doctorId: selectedDoctor.id,
-                        // Do not copy comments/likes arrays here, as they will be subcollections
-                        comments: [],
-                        likes: []
-                    });
+                if (!userReviewSnap.exists()) {
+                    // If the private review document doesn't exist, create a minimal one
+                    const publicReviewDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors/${selectedDoctor.id}/reviews/${reviewId}`);
+                    const publicReviewSnap = await transaction.get(publicReviewDocRef);
+                    if (publicReviewSnap.exists()) {
+                        transaction.set(userReviewDocRef, {
+                            ...publicReviewSnap.data(),
+                            id: reviewId,
+                            userId: currentUserId,
+                            hospitalId: selectedHospital.id,
+                            doctorId: selectedDoctor.id,
+                            comments: [],
+                            likes: []
+                        });
+                    }
                 }
-            }
+                const userReviewCommentsColRef = collection(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}/comments`);
+                transaction.set(doc(userReviewCommentsColRef, newCommentId), newCommentData);
 
-            const userReviewCommentsColRef = collection(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}/comments`);
-            await setDoc(doc(userReviewCommentsColRef, newCommentId), newCommentData);
-
+                // Increment numComments on the doctor document
+                const doctorSnap = await transaction.get(doctorDocRef);
+                if (doctorSnap.exists()) {
+                    const doctorData = doctorSnap.data();
+                    const currentNumComments = doctorData.numComments || 0;
+                    transaction.update(doctorDocRef, {
+                        numComments: currentNumComments + 1,
+                    });
+                } else {
+                    console.warn("ReviewsHubPage: Doctor document not found for updating comment counts.");
+                }
+            });
 
             // Clear the comment input for the specific review
             setCommentText(prev => ({ ...prev, [reviewId]: '' }));
@@ -862,27 +864,27 @@ const ReviewsHubPage = () => {
         try {
             // Reference to the specific like document (using userId as the ID)
             const publicLikeDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors/${selectedDoctor.id}/reviews/${reviewId}/likes/${currentUserId}`);
-            const publicLikeSnap = await getDoc(publicLikeDocRef);
-
-            // Reference to the private like document (using userId as the ID)
             const privateLikeDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}/likes/${currentUserId}`);
 
-            if (publicLikeSnap.exists()) {
-                // User has already liked, so unlike (delete the like document from public and private)
-                await deleteDoc(publicLikeDocRef);
-                await deleteDoc(privateLikeDocRef); // Ensure private copy is also removed
-                showMessage('Review unliked.', 'info');
-            } else {
-                // User has not liked, so like (create the like document in public and private)
-                await setDoc(publicLikeDocRef, {
-                    timestamp: new Date(),
-                    // No need to store reviewId, doctorId, hospitalId here as they are in the path
-                });
-                await setDoc(privateLikeDocRef, { // Create private copy
-                    timestamp: new Date(),
-                });
-                showMessage('Review liked!', 'success');
-            }
+            await runTransaction(db, async (transaction) => {
+                const publicLikeSnap = await transaction.get(publicLikeDocRef);
+
+                if (publicLikeSnap.exists()) {
+                    // User has already liked, so unlike (delete the like document from public and private)
+                    transaction.delete(publicLikeDocRef);
+                    transaction.delete(privateLikeDocRef); // Ensure private copy is also removed
+                    showMessage('Review unliked.', 'info');
+                } else {
+                    // User has not liked, so like (create the like document in public and private)
+                    transaction.set(publicLikeDocRef, {
+                        timestamp: new Date(),
+                    });
+                    transaction.set(privateLikeDocRef, { // Create private copy
+                        timestamp: new Date(),
+                    });
+                    showMessage('Review liked!', 'success');
+                }
+            });
 
         } catch (e) {
             console.error("ReviewsHubPage: Error liking/unliking review: ", e);
@@ -940,6 +942,8 @@ const ReviewsHubPage = () => {
         setShowSuggestions(false);
         setFilteredNursingFields([]);
     };
+
+    // Removed renderStarRating helper function
 
 
     return (
@@ -1123,7 +1127,8 @@ const ReviewsHubPage = () => {
                                     className="bg-gray-100 text-gray-800 px-4 py-2 rounded-full hover:bg-[#CC5500] hover:text-white transition duration-200 btn-hover-scale"
                                     onClick={() => handleDoctorSelect(doctor)}
                                 >
-                                    {`${doctor.name} (${doctor.numComments})`}
+                                    {/* Display numReviews instead of numComments */}
+                                    {`${doctor.name} (${doctor.numReviews})`}
                                 </button>
                             ))}
                         </div>
@@ -1177,6 +1182,7 @@ const ReviewsHubPage = () => {
                             </div>
                             {/* Review form elements */}
                             <div className="mt-4">
+                                {/* Removed Star Rating Input */}
                                 {/* Nursing Field Search Bar with Suggestions */}
                                 <div className="mb-4 relative">
                                     <label htmlFor="nursing-field-input" className="block text-gray-700 text-sm font-medium mb-2">
@@ -1272,6 +1278,8 @@ const ReviewsHubPage = () => {
                                         <p className="text-gray-800 leading-relaxed mb-4 text-base">
                                             {review.comment}
                                         </p>
+
+                                        {/* Removed Display the star rating of the review */}
 
                                         <div className="flex items-center gap-4 border-t border-gray-100 pt-3 mt-3">
                                             <button

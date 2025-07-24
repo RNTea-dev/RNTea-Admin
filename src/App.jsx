@@ -709,7 +709,7 @@ export default function App() {
                     style={{ animationDelay: '0.2s' }}
                 >
                     <span className="relative inline-block">
-                        Reviews
+                        Browse Tea
                         <span className="absolute left-0 bottom-0 h-0.5 bg-[#CC5500] w-0 transition-all duration-300 group-hover:w-full"></span>
                     </span>
                 </Link>
