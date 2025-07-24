@@ -23,12 +23,15 @@ service cloud.firestore {
       allow delete: if isAdmin(); // Only admins can delete hospitals
     }
 
-    // Doctors subcollection: Publicly readable, signed-in users can create, only admins can update/delete.
-    // This rule also allows updates to 'ratings', 'numReviews', 'numComments' by admins or by a Cloud Function.
+    // Doctors subcollection: Publicly readable, signed-in users can create.
+    // IMPORTANT: Only admins (or a trusted Cloud Function) can update 'ratings', 'numReviews', 'numComments'.
+    // This ensures data integrity for aggregated fields.
     match /artifacts/{appId}/public/data/hospitals/{hospitalId}/doctors/{doctorId} {
       allow read: if true; // Anyone can read doctor data
       allow create: if request.auth != null; // Signed-in users can create new doctors
-      allow update: if isAdmin(); // Only admins can update doctor details (including numReviews/numComments)
+      // Only admins can update doctor details, including aggregated fields like numReviews, averageRating, numComments.
+      // In a production app, a Cloud Function would typically handle these updates.
+      allow update: if isAdmin();
       allow delete: if isAdmin(); // Only admins can delete doctors
     }
 

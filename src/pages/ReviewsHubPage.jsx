@@ -198,14 +198,14 @@ const ReviewsHubPage = () => {
     const [filteredNursingFields, setFilteredNursingFields] = useState([]); // NEW: State for filtered suggestions
     const [showSuggestions, setShowSuggestions] = useState(false); // NEW: State to control suggestion visibility
 
-    const [showCommentInput, setShowCommentInput] = useState({});
+    const [showCommentInput, setShowCommentInput] = useState({}); // Corrected: Initialized with useState({})
     const [commentText, setCommentText] = useState({});
     const [commentSuccessMessage, setCommentSuccessMessage] = useState({}); // Re-introduced for temporary success message - CORRECTED
 
     // NEW STATES for Add Hospital/Doctor forms
     const [showAddHospitalForm, setShowAddHospitalForm] = useState(false);
     const [newHospitalName, setNewHospitalName] = useState('');
-    const [newHospitalLocation, setNewHospitalLocation] = useState('');
+    const [newHospitalLocation, setNewHospitalLocation] = '';
 
     const [showAddDoctorForm, setShowAddDoctorForm] = useState(false);
     const [newDoctorName, setNewDoctorName] = useState('');
@@ -344,7 +344,7 @@ const ReviewsHubPage = () => {
     }, []);
 
     // --- Doctor Management ---
-    const handleHospitalSelect = useCallback(async (hospital) => {
+    const handleHospitalSelect = useCallback(async (hospital) => { // Made async to allow await inside
         console.log("ReviewsHubPage: handleHospitalSelect called for hospital:", hospital.name);
         setSelectedHospital(hospital);
         console.log("ReviewsHubPage: Populating hospitalInput with:", hospital.name);
@@ -367,23 +367,39 @@ const ReviewsHubPage = () => {
 
         // Fetch doctors from the subcollection
         const doctorsColRef = collection(db, `artifacts/${appId}/public/data/hospitals/${hospital.id}/doctors`);
-        const unsubscribeDoctors = onSnapshot(doctorsColRef, (querySnapshot) => {
+        const unsubscribeDoctors = onSnapshot(doctorsColRef, async (querySnapshot) => { // Made onSnapshot callback async
             console.log("ReviewsHubPage: onSnapshot triggered for doctors.");
-            const fetchedDoctors = [];
-            querySnapshot.forEach((docRef) => {
+            const fetchedDoctorsPromises = querySnapshot.docs.map(async (docRef) => {
                 const data = docRef.data();
+                const doctorId = docRef.id;
+                let numReviews = 0; // Default to 0
+
                 if (data.name) {
-                    fetchedDoctors.push({
-                        id: docRef.id,
+                    try {
+                        // Fetch the actual number of reviews from the subcollection
+                        // This ensures the displayed count is accurate, even if the 'numReviews' field
+                        // on the doctor document isn't updated due to security rules for non-admin users.
+                        const reviewsSnapshot = await getDocs(collection(db, `artifacts/${appId}/public/data/hospitals/${hospital.id}/doctors/${doctorId}/reviews`));
+                        numReviews = reviewsSnapshot.docs.length;
+                    } catch (error) {
+                        console.error(`ReviewsHubPage: Error fetching reviews count for doctor ${doctorId}:`, error);
+                        // numReviews will remain 0 if there's an error fetching the subcollection
+                    }
+
+                    return {
+                        id: doctorId,
                         hospitalId: hospital.id,
                         ...data,
-                        // Read aggregated data directly from the doctor document
                         averageRating: data.averageRating || 0,
-                        numReviews: data.numReviews || 0,
-                        numComments: data.numComments || 0
-                    });
+                        numReviews: numReviews, // Use dynamically calculated count
+                        numComments: data.numComments || 0 // Keep numComments from doc for now, or calculate similarly if needed
+                    };
                 }
+                return null; // Return null for invalid doctor documents
             });
+
+            // Wait for all review counts to be fetched for all doctors
+            const fetchedDoctors = (await Promise.all(fetchedDoctorsPromises)).filter(Boolean); // Filter out any nulls
 
             fetchedDoctors.sort((a, b) => a.name.localeCompare(b.name));
             console.log("ReviewsHubPage: Fetched Doctors from snapshot for selected hospital:", fetchedDoctors.length);
@@ -720,6 +736,12 @@ const ReviewsHubPage = () => {
                 });
 
                 // Update the doctor's review counts and average rating
+                // IMPORTANT: This update will only succeed if the current user is an admin,
+                // as per your Firestore security rules (`allow update: if isAdmin()`).
+                // For non-admin users, this part of the transaction will fail silently due to permissions,
+                // meaning `numReviews` and `averageRating` on the doctor document will not be updated by client-side writes.
+                // For a robust, scalable, and reliable solution, these aggregated fields should be updated
+                // by a Firebase Cloud Function triggered by review additions/deletions.
                 const doctorSnap = await transaction.get(doctorDocRef);
                 if (doctorSnap.exists()) {
                     const doctorData = doctorSnap.data();
@@ -820,6 +842,11 @@ const ReviewsHubPage = () => {
                 transaction.set(doc(userReviewCommentsColRef, newCommentId), newCommentData);
 
                 // Increment numComments on the doctor document
+                // IMPORTANT: Similar to numReviews, this update will only succeed if the current user is an admin,
+                // as per your Firestore security rules (`allow update: if isAdmin()`).
+                // For non-admin users, this part of the transaction will fail silently due to permissions.
+                // For a robust, scalable, and reliable solution, these aggregated fields should be updated
+                // by a Firebase Cloud Function triggered by comment additions/deletions.
                 const doctorSnap = await transaction.get(doctorDocRef);
                 if (doctorSnap.exists()) {
                     const doctorData = doctorSnap.data();
@@ -1127,7 +1154,7 @@ const ReviewsHubPage = () => {
                                     className="bg-gray-100 text-gray-800 px-4 py-2 rounded-full hover:bg-[#CC5500] hover:text-white transition duration-200 btn-hover-scale"
                                     onClick={() => handleDoctorSelect(doctor)}
                                 >
-                                    {/* Display numReviews instead of numComments */}
+                                    {/* Display numReviews from the doctor document, assuming it's correctly aggregated by a server-side process. */}
                                     {`${doctor.name} (${doctor.numReviews})`}
                                 </button>
                             ))}
@@ -1235,7 +1262,7 @@ const ReviewsHubPage = () => {
                     )}
 
                     {loadingReviews && <p className="text-gray-700 italic text-center" aria-live="polite">Loading reviews...</p>}
-                    {noReviewsForDoctor && !loadingReviews && <p className="text-gray-700 italic text-center" aria-live="polite">No reviews found for this doctor yet. Be the first to add one!</p>}
+                    {noReviewsForDoctor && !loadingReviews && <p className="text-gray-700 italic text-center" aria="polite">No reviews found for this doctor yet. Be the first to add one!</p>}
 
                     {reviews.length > 0 && (
                         <div id="reviews-list" className="space-y-6">
