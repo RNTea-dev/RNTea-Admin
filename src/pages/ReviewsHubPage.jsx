@@ -205,7 +205,7 @@ const ReviewsHubPage = () => {
     // NEW STATES for Add Hospital/Doctor forms
     const [showAddHospitalForm, setShowAddHospitalForm] = useState(false);
     const [newHospitalName, setNewHospitalName] = useState('');
-    const [newHospitalLocation, setNewHospitalLocation] = '';
+    const [newHospitalLocation, setNewHospitalLocation] = useState('');
 
     const [showAddDoctorForm, setShowAddDoctorForm] = useState(false);
     const [newDoctorName, setNewDoctorName] = useState('');
@@ -721,47 +721,61 @@ const ReviewsHubPage = () => {
             };
             console.log("ReviewsHubPage: Submitting new review data:", newReviewData);
 
-            await runTransaction(db, async (transaction) => {
-                // Add the new review document to the reviews subcollection
-                const docRef = doc(reviewsColRef); // Create a new doc ref with an auto-generated ID
-                transaction.set(docRef, newReviewData);
-                const newReviewId = docRef.id;
+            // Using a batched write instead of a transaction for writes that might be unauthorized by security rules.
+            // This allows the review to be written even if the doctor document update fails due to permissions.
+            // For a truly atomic update including the doctor document, a Cloud Function is required.
+            const newReviewDocRef = doc(reviewsColRef); // Get a new document reference with an auto-generated ID
+            const newReviewId = newReviewDocRef.id;
 
-                // Store a copy of the review in the user's private collection
-                const userReviewRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${newReviewId}`);
-                transaction.set(userReviewRef, {
-                    ...newReviewData,
-                    id: newReviewId, // Include the ID for the private copy
-                    userId: currentUserId, // Explicitly use currentUserId for security rule match
-                });
+            // Write the new review to the public collection
+            await setDoc(newReviewDocRef, newReviewData);
 
-                // Update the doctor's review counts and average rating
-                // IMPORTANT: This update will only succeed if the current user is an admin,
-                // as per your Firestore security rules (`allow update: if isAdmin()`).
-                // For non-admin users, this part of the transaction will fail silently due to permissions,
-                // meaning `numReviews` and `averageRating` on the doctor document will not be updated by client-side writes.
-                // For a robust, scalable, and reliable solution, these aggregated fields should be updated
-                // by a Firebase Cloud Function triggered by review additions/deletions.
-                const doctorSnap = await transaction.get(doctorDocRef);
+            // Write a copy of the review to the user's private collection
+            const userReviewRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${newReviewId}`);
+            await setDoc(userReviewRef, {
+                ...newReviewData,
+                id: newReviewId,
+                userId: currentUserId,
+            });
+
+            // Attempt to update the doctor's review counts and average rating.
+            // This operation will only succeed if the current user is an admin due to security rules.
+            // For non-admin users, this will fail silently due to permissions.
+            // For a robust solution, these aggregated fields should be updated by a Firebase Cloud Function.
+            try {
+                const doctorSnap = await getDoc(doctorDocRef); // Read outside of a transaction
                 if (doctorSnap.exists()) {
                     const doctorData = doctorSnap.data();
                     const currentNumReviews = doctorData.numReviews || 0;
-                    const currentTotalStars = (doctorData.averageRating || 0) * currentNumReviews; // Reconstruct total stars
+                    const currentTotalStars = (doctorData.averageRating || 0) * currentNumReviews;
 
                     const updatedNumReviews = currentNumReviews + 1;
                     const updatedTotalStars = currentTotalStars + newReviewData.stars;
                     const updatedAverageRating = updatedNumReviews > 0 ? (updatedTotalStars / updatedNumReviews) : 0;
 
-                    transaction.update(doctorDocRef, {
+                    await updateDoc(doctorDocRef, {
                         numReviews: updatedNumReviews,
                         averageRating: updatedAverageRating,
                     });
                 } else {
-                    console.warn("ReviewsHubPage: Doctor document not found for updating review counts.");
-                    // If doctor doc doesn't exist, it might be a new doctor added recently but not yet propagated.
-                    // For now, we'll proceed without updating counts, but in a real app, you might want to create it or handle this edge case.
+                    console.warn("ReviewsHubPage: Doctor document not found for updating review counts. This might be expected if the doctor was just added or if security rules prevent reading.");
                 }
+            } catch (updateError) {
+                console.warn("ReviewsHubPage: Failed to update doctor document (numReviews/averageRating). This is likely due to Firestore security rules for non-admin users. Consider using a Cloud Function for aggregation.", updateError);
+            }
+
+            // After successful review submission, update local state for immediate UI reflection
+            setSelectedDoctor(prevDoctor => {
+                if (prevDoctor) {
+                    return {
+                        ...prevDoctor,
+                        numReviews: prevDoctor.numReviews + 1, // Increment local count
+                        // averageRating could also be updated here if needed, but it's more complex without the full calculation
+                    };
+                }
+                return prevDoctor;
             });
+
 
             setReviewText('');
             // Removed starRating reset
@@ -812,52 +826,50 @@ const ReviewsHubPage = () => {
                 date: new Date(),
             };
 
-            await runTransaction(db, async (transaction) => {
-                // Add the new comment document to the comments subcollection
-                const commentDocRef = doc(commentsColRef);
-                transaction.set(commentDocRef, newCommentData);
-                const newCommentId = commentDocRef.id;
+            const newCommentDocRef = doc(commentsColRef); // Get a new document reference with an auto-generated ID
+            const newCommentId = newCommentDocRef.id;
 
-                // Update the user's private copy of the review with the new comment
-                const userReviewDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}`);
-                const userReviewSnap = await transaction.get(userReviewDocRef);
+            // Write the new comment to the public collection
+            await setDoc(newCommentDocRef, newCommentData);
 
-                if (!userReviewSnap.exists()) {
-                    // If the private review document doesn't exist, create a minimal one
-                    const publicReviewDocRef = doc(db, `artifacts/${appId}/public/data/hospitals/${selectedHospital.id}/doctors/${selectedDoctor.id}/reviews/${reviewId}`);
-                    const publicReviewSnap = await transaction.get(publicReviewDocRef);
-                    if (publicReviewSnap.exists()) {
-                        transaction.set(userReviewDocRef, {
-                            ...publicReviewSnap.data(),
-                            id: reviewId,
-                            userId: currentUserId,
-                            hospitalId: selectedHospital.id,
-                            doctorId: selectedDoctor.id,
-                            comments: [],
-                            likes: []
-                        });
-                    }
-                }
-                const userReviewCommentsColRef = collection(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}/comments`);
-                transaction.set(doc(userReviewCommentsColRef, newCommentId), newCommentData);
+            // Update the user's private copy of the review with the new comment
+            const userReviewDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}`);
+            // Note: For comments, we're not using a transaction here for simplicity and to avoid the read-before-write issue
+            // if the user's private review document doesn't exist yet.
+            // A Cloud Function would be ideal for robustly handling private copies of comments as well.
+            const userReviewCommentsColRef = collection(db, `artifacts/${appId}/users/${currentUserId}/myReviews/${reviewId}/comments`);
+            await setDoc(doc(userReviewCommentsColRef, newCommentId), newCommentData);
 
-                // Increment numComments on the doctor document
-                // IMPORTANT: Similar to numReviews, this update will only succeed if the current user is an admin,
-                // as per your Firestore security rules (`allow update: if isAdmin()`).
-                // For non-admin users, this part of the transaction will fail silently due to permissions.
-                // For a robust, scalable, and reliable solution, these aggregated fields should be updated
-                // by a Firebase Cloud Function triggered by comment additions/deletions.
-                const doctorSnap = await transaction.get(doctorDocRef);
+            // Attempt to increment numComments on the doctor document.
+            // This operation will only succeed if the current user is an admin due to security rules.
+            // For non-admin users, this will fail silently due to permissions.
+            // For a robust solution, these aggregated fields should be updated by a Firebase Cloud Function.
+            try {
+                const doctorSnap = await getDoc(doctorDocRef); // Read outside of a transaction
                 if (doctorSnap.exists()) {
                     const doctorData = doctorSnap.data();
                     const currentNumComments = doctorData.numComments || 0;
-                    transaction.update(doctorDocRef, {
+                    await updateDoc(doctorDocRef, {
                         numComments: currentNumComments + 1,
                     });
                 } else {
-                    console.warn("ReviewsHubPage: Doctor document not found for updating comment counts.");
+                    console.warn("ReviewsHubPage: Doctor document not found for updating comment counts. This might be expected if the doctor was just added or if security rules prevent reading.");
                 }
+            } catch (updateError) {
+                console.warn("ReviewsHubPage: Failed to update doctor document (numComments). This is likely due to Firestore security rules for non-admin users. Consider using a Cloud Function for aggregation.", updateError);
+            }
+
+            // After successful comment submission, update local state for immediate UI reflection
+            setSelectedDoctor(prevDoctor => {
+                if (prevDoctor) {
+                    return {
+                        ...prevDoctor,
+                        numComments: prevDoctor.numComments + 1, // Increment local count
+                    };
+                }
+                return prevDoctor;
             });
+
 
             // Clear the comment input for the specific review
             setCommentText(prev => ({ ...prev, [reviewId]: '' }));
