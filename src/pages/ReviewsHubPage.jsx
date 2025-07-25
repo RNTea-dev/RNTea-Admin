@@ -20,7 +20,7 @@ import {
 
 // Define explicit words for content filtering
 const EXPLICIT_WORDS = ['fuck', 'shit', 'asshole', 'bitch', 'cunt', 'damn', 'hell'];
-const MAX_CHAR_LIMIT = 250; // Max characters for review and comment text
+const MAX_CHAR_LIMIT = 1500; // Max characters for review and comment text
 
 // List of nursing fields for the dropdown
 const NURSING_FIELDS_UNSORTED = [

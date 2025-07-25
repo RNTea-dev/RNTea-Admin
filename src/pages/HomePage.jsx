@@ -8,15 +8,16 @@ const HomePage = () => {
     const location = useLocation(); // Get current location object including hash
     const { auth, showMessage, appId } = useContext(FirebaseContext); // Access auth and showMessage from context
 
-    // State for contact form fields
-    const [contactName, setContactName] = useState('');
-    const [contactEmail, setContactEmail] = useState('');
-    const [contactSubject, setContactSubject] = useState('');
-    const [contactMessage, setContactMessage] = useState('');
-    // NEW: State for honeypot field
+    // State for anonymous feedback message
+    const [feedbackMessage, setFeedbackMessage] = useState('');
+    // State for honeypot field
     const [honeypot, setHoneypot] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // State for client-side submission cooldown (in seconds)
+    const [submissionCooldown, setSubmissionCooldown] = useState(0);
+
+    // Removed: State to control the visibility of the feedback form (showFeedbackForm)
 
     useEffect(() => {
         // Scroll to specific section if hash exists in URL on initial load or hash change
@@ -79,28 +80,37 @@ const HomePage = () => {
         };
     }, []);
 
-    // Handle contact form submission
-    const handleContactSubmit = useCallback(async (e) => {
+    // Handle anonymous feedback submission
+    const handleFeedbackSubmit = useCallback(async (e) => { // Renamed handler
         e.preventDefault();
+
+        // Client-side cooldown check: Prevent submission if still in cooldown period
+        if (submissionCooldown > 0) {
+            showMessage(`Please wait ${submissionCooldown} seconds before submitting again.`, 'warning');
+            return; // Exit function if cooldown is active
+        }
+
         setIsSubmitting(true);
 
-        // NEW: Honeypot check - if this field is filled, it's likely a bot
+        // Honeypot check - if this field is filled, it's likely a bot
         if (honeypot) {
             console.warn("Honeypot field filled. Likely a bot submission. Discarding.");
-            showMessage('Thank you for your message!', 'success');
+            showMessage('Thank you for your feedback!', 'success'); // Changed message
             setIsSubmitting(false);
             return;
         }
 
-        if (!contactName.trim() || !contactEmail.trim() || !contactSubject.trim() || !contactMessage.trim()) {
-            showMessage('Please fill in all required fields.', 'error');
+        if (!feedbackMessage.trim()) { // Only check feedbackMessage
+            showMessage('Please enter your feedback.', 'error'); // Changed message
             setIsSubmitting(false);
             return;
         }
 
         try {
             const functionsBaseUrl = `https://${appId}.cloudfunctions.net`; // Example base URL, adjust as needed
-            const functionUrl = `${functionsBaseUrl}/sendContactEmail`; // Assuming function name is sendContactEmail
+            // IMPORTANT: You need to create/update a Cloud Function named 'submitAnonymousFeedback'
+            // on your Firebase project to handle this anonymous submission and implement server-side rate limiting.
+            const functionUrl = `${functionsBaseUrl}/submitAnonymousFeedback`; // Assuming new function name
 
             // Using fetch to call the Cloud Function
             const response = await fetch(functionUrl, {
@@ -110,10 +120,7 @@ const HomePage = () => {
                 },
                 body: JSON.stringify({
                     data: { // Callable functions wrap data in a 'data' field
-                        name: contactName,
-                        email: contactEmail,
-                        subject: contactSubject,
-                        message: contactMessage,
+                        message: feedbackMessage, // Only sending the message
                     }
                 }),
             });
@@ -121,23 +128,37 @@ const HomePage = () => {
             const result = await response.json();
 
             if (response.ok && result.data.success) {
-                showMessage('Your message has been sent successfully!', 'success');
-                setContactName('');
-                setContactEmail('');
-                setContactSubject('');
-                setContactMessage('');
+                showMessage('Your feedback has been sent successfully!', 'success'); // Changed message
+                setFeedbackMessage(''); // Clear only the feedback message
                 setHoneypot(''); // Clear honeypot as well
+                // Removed: setShowFeedbackForm(false); // No longer hide the form on success
+
+                // Start client-side cooldown after successful submission
+                const cooldownDuration = 10; // 10 seconds cooldown
+                setSubmissionCooldown(cooldownDuration);
+                let timer = setInterval(() => {
+                    setSubmissionCooldown((prev) => {
+                        if (prev <= 1) {
+                            clearInterval(timer); // Stop the timer when cooldown is over
+                            return 0;
+                        }
+                        return prev - 1;
+                    });
+                }, 1000); // Update every second
+
             } else {
-                const errorMessage = result.data?.message || 'Failed to send message. Please try again.';
+                const errorMessage = result.data?.message || 'Failed to send feedback. Please try again.'; // Changed message
                 showMessage(`Error: ${errorMessage}`, 'error');
             }
         } catch (error) {
-            console.error("Error submitting contact form:", error);
+            console.error("Error submitting feedback form:", error); // Changed message
             showMessage(`An unexpected error occurred: ${error.message}`, 'error');
         } finally {
             setIsSubmitting(false);
         }
-    }, [contactName, contactEmail, contactSubject, contactMessage, honeypot, showMessage, appId]);
+    }, [feedbackMessage, honeypot, showMessage, appId, submissionCooldown]); // Updated dependencies
+
+    // Removed: handleNewFeedbackClick function as it's no longer needed
 
 
     return (
@@ -247,30 +268,22 @@ const HomePage = () => {
                 <div className="container mx-auto">
                     <h1 className="text-4xl md:text-5xl font-extrabold text-gray-800 text-center mb-16 animate-fade-in-down">Contact Us!</h1>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                        {/* Left Column: Send us a Message Form */}
+                        {/* Left Column: Anonymous Feedback/Suggestion Box */}
                         {/* Added group, relative, overflow-hidden. Inner div for animated top border. */}
                         <div className="bg-gray-50 p-8 rounded-lg shadow-md animate-slide-in-left group relative overflow-hidden">
                             {/* Animated top border element */}
                             <div className="absolute top-0 left-0 h-2 bg-[#CC5500] w-0 transition-all duration-300 ease-out group-hover:w-full"></div>
-                            <h2 className="text-3xl font-bold text-gray-800 mb-6">Send us a Message</h2>
-                            <form onSubmit={handleContactSubmit}>
-                                <div className="mb-4">
-                                    <label htmlFor="your-name" className="block text-gray-700 text-sm font-medium mb-2">Your Name</label>
-                                    <input type="text" id="your-name" className="shadow-sm appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent" placeholder="John Doe" value={contactName} onChange={(e) => setContactName(e.target.value)} required />
-                                </div>
-                                <div className="mb-4">
-                                    <label htmlFor="your-email" className="block text-gray-700 text-sm font-medium mb-2">Your Email</label>
-                                    <input type="email" id="your-email" className="shadow-sm appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent" placeholder="you@example.com" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} required />
-                                </div>
-                                <div className="mb-4">
-                                    <label htmlFor="subject" className="block text-gray-700 text-sm font-medium mb-2">Subject</label>
-                                    <input type="text" id="subject" className="shadow-sm appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent" placeholder="Regarding a review..." value={contactSubject} onChange={(e) => setContactSubject(e.target.value)} required />
-                                </div>
+                            <h2 className="text-3xl font-bold text-gray-800 mb-6">Share Your Anonymous Feedback</h2>
+                            <p className="text-lg text-gray-700 leading-relaxed mb-6">
+                                Your thoughts help us improve RNTea! Share any suggestions, issues, or general feedback here. No names, no email required.
+                            </p>
+                            {/* The form is now always rendered, and the textarea's value is controlled by feedbackMessage state */}
+                            <form onSubmit={handleFeedbackSubmit}> {/* Changed handler */}
                                 <div className="mb-6">
-                                    <label htmlFor="your-message" className="block text-gray-700 text-sm font-medium mb-2">Your Message <span className="text-gray-500">(optional)</span></label>
-                                    <textarea id="your-message" rows="5" className="shadow-sm appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent" placeholder="Share your experience... (optional)" value={contactMessage} onChange={(e) => setContactMessage(e.target.value)} required></textarea>
+                                    <label htmlFor="feedback-message" className="block text-gray-700 text-sm font-medium mb-2">Your Feedback</label>
+                                    <textarea id="feedback-message" rows="7" className="shadow-sm appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent" placeholder="Tell us what's on your mind..." value={feedbackMessage} onChange={(e) => setFeedbackMessage(e.target.value)} required></textarea>
                                 </div>
-                                {/* NEW: Honeypot field - hidden from human users */}
+                                {/* Honeypot field - hidden from human users */}
                                 <div style={{ display: 'none' }}>
                                     <label htmlFor="honeypot-field">Leave this field blank</label>
                                     <input
@@ -283,8 +296,12 @@ const HomePage = () => {
                                         autoComplete="off" // Prevent browser autofill
                                     />
                                 </div>
-                                <button type="submit" className="bg-[#FFDEB5] hover:bg-custom-beige text-gray-800 font-bold py-3 px-6 rounded-md w-full transition duration-300 ease-in-out" disabled={isSubmitting}>
-                                    {isSubmitting ? 'Sending...' : 'Send Message'}
+                                <button
+                                    type="submit"
+                                    className="bg-[#FFDEB5] hover:bg-custom-beige text-gray-800 font-bold py-3 px-6 rounded-md w-full transition duration-300 ease-in-out"
+                                    disabled={isSubmitting || submissionCooldown > 0} // Disable if submitting or in cooldown
+                                >
+                                    {isSubmitting ? 'Sending...' : (submissionCooldown > 0 ? `Wait ${submissionCooldown}s` : 'Send Feedback')}
                                 </button>
                             </form>
                         </div>
@@ -337,10 +354,10 @@ const HomePage = () => {
                                             <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
                                         </svg>
                                     </a>
-                                    <a href="https://www.instagram.com/myrntea/" target="_blank" rel="noopener noreferrer" className="social-icon-hover text-pink-500 hover:text-pink-600 transition duration-300 transform hover:scale-110 w-10 h-10 flex items-center justify-center">
+                                    <a href="https://www.instagram.com/myrntea/" target="_blank" rel="noopener noreferrer" className="social-icon-hover text-pink-500 hover:text-pink-600 transition duration-300 transform hover:scale-110 w-10 h-1- flex items-center justify-center">
                                         {/* Modern Instagram icon - removed explicit width/height from SVG, relying on parent a tag and flex centering */}
                                         <svg className="w-full h-full" fill="currentColor" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet">
-                                            <path d="M7.8 2h8.4C19.4 2 22 4.6 22 7.8v8.4c0 3.2-2.6 5.8-5.8 5.8H7.8C4.6 22 2 19.4 2 16.2V7.8C2 4.6 4.6 2 7.8 2zm-.2 2A2.2 2.2 0 0 0 5.4 6.2v8.4c0 1.2.9 2.2 2.2 2.2h8.4a2.2 2.2 0 0 0 2.2-2.2V6.2A2.2 2.2 0 0 0 16.2 4H7.6zM12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm6.5-3A1.5 1.5 0 1 0 18.5 7 1.5 1.5 0 0 0 18.5 4z"/>
+                                            <path d="M7.8 2h8.4C19.4 2 22 4.6 22 7.8v8.4c0 3.2-2.6 5.8-5.8 5.8H7.8C4.6 22 2 19.4 2 16.2V7.8C2 4.6 4.6 2 7.8 2zm-.2 4A2.2 2.2 0 0 0 5.4 6.2v8.4c0 1.2.9 2.2 2.2 2.2h8.4a2.2 2.2 0 0 0 2.2-2.2V6.2A2.2 2.2 0 0 0 16.2 4H7.6zM12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm6.5-3A1.5 1.5 0 1 0 18.5 7 1.5 1.5 0 0 0 18.5 4z"/>
                                         </svg>
                                     </a>
                                 </div>
