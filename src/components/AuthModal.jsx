@@ -572,7 +572,8 @@ const AuthModal = ({ onClose }) => {
                                         <input
                                             type="email"
                                             id="email"
-                                            className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${emailError ? 'border-red-500' : 'border-gray-300'}`}
+                                            // MODIFIED: Added focus:border-custom-orange and removed focus:border-transparent
+                                            className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-custom-orange focus:shadow-md block ${emailError ? 'border-red-500' : 'border-gray-300'}`}
                                             placeholder="your.email@example.com"
                                             value={email}
                                             onChange={(e) => { setEmail(e.target.value); setEmailError(''); }}
@@ -584,7 +585,8 @@ const AuthModal = ({ onClose }) => {
                                         <input
                                             type="password"
                                             id="password"
-                                            className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${passwordError ? 'border-red-500' : 'border-gray-300'}`}
+                                            // MODIFIED: Added focus:border-custom-orange and removed focus:border-transparent
+                                            className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-custom-orange focus:shadow-md block ${passwordError ? 'border-red-500' : 'border-gray-300'}`}
                                             placeholder="********"
                                             value={password}
                                             onChange={(e) => { setPassword(e.target.value); setPasswordError(''); }}
@@ -604,7 +606,8 @@ const AuthModal = ({ onClose }) => {
                                             <input
                                                 type="email"
                                                 id="email"
-                                                className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${emailError ? 'border-red-500' : 'border-gray-300'}`}
+                                                // MODIFIED: Added focus:border-custom-orange and removed focus:border-transparent
+                                                className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-custom-orange focus:shadow-md block ${emailError ? 'border-red-500' : 'border-gray-300'}`}
                                                 placeholder="your.email@example.com"
                                                 value={email}
                                                 onChange={(e) => { setEmail(e.target.value); setEmailError(''); }}
@@ -617,7 +620,8 @@ const AuthModal = ({ onClose }) => {
                                             <input
                                                 type="text"
                                                 id="username-email-signup"
-                                                className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${usernameError ? 'border-red-500' : 'border-gray-300'}`}
+                                                // MODIFIED: Added focus:border-custom-orange and removed focus:border-transparent
+                                                className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-custom-orange focus:shadow-md block ${usernameError ? 'border-red-500' : 'border-gray-300'}`}
                                                 placeholder="Choose a username"
                                                 value={username}
                                                 onChange={(e) => { setUsername(e.target.value); setUsernameError(''); }}
@@ -633,7 +637,8 @@ const AuthModal = ({ onClose }) => {
                                             <input
                                                 type="password"
                                                 id="password"
-                                                className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${passwordError ? 'border-red-500' : 'border-gray-300'}`}
+                                                // MODIFIED: Added focus:border-custom-orange and removed focus:border-transparent
+                                                className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-custom-orange focus:shadow-md block ${passwordError ? 'border-red-500' : 'border-gray-300'}`}
                                                 placeholder="********"
                                                 value={password}
                                                 onChange={(e) => { setPassword(e.target.value); setPasswordError(''); }}
@@ -645,7 +650,8 @@ const AuthModal = ({ onClose }) => {
                                             <input
                                                 type="password"
                                                 id="confirm-password"
-                                                className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${confirmPasswordError ? 'border-red-500' : 'border-gray-300'}`}
+                                                // MODIFIED: Added focus:border-custom-orange and removed focus:border-transparent
+                                                className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-custom-orange focus:shadow-md block ${confirmPasswordError ? 'border-red-500' : 'border-gray-300'}`}
                                                 placeholder="********"
                                                 value={confirmPassword}
                                                 onChange={(e) => { setConfirmPassword(e.target.value); setConfirmPasswordError(''); }}
@@ -662,7 +668,8 @@ const AuthModal = ({ onClose }) => {
                                                 <input
                                                     type="tel"
                                                     id="phoneNumber"
-                                                    className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${phoneNumberError ? 'border-red-500' : 'border-gray-300'}`}
+                                                    // MODIFIED: Added focus:border-custom-orange and removed focus:border-transparent
+                                                    className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-custom-orange focus:shadow-md block ${phoneNumberError ? 'border-red-500' : 'border-gray-300'}`}
                                                     placeholder="e.g., +11234567890"
                                                     value={phoneNumber}
                                                     onChange={(e) => {
@@ -689,7 +696,8 @@ const AuthModal = ({ onClose }) => {
                                                 <input
                                                     type="text"
                                                     id="otp"
-                                                    className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-transparent focus:shadow-md block ${otpError ? 'border-red-500' : 'border-gray-300'}`}
+                                                    // MODIFIED: Added focus:border-custom-orange and removed focus:border-transparent
+                                                    className={`w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-custom-beige focus:border-custom-orange focus:shadow-md block ${otpError ? 'border-red-500' : 'border-gray-300'}`}
                                                     placeholder="e.g., 123456"
                                                     value={otp}
                                                     onChange={(e) => { setOtp(e.target.value); setOtpError(''); }}
@@ -791,7 +799,7 @@ const AuthModal = ({ onClose }) => {
                             onClick={() => showLocalMessage('Password reset functionality not yet implemented.', 'info')}
                             className="text-[#CC5500] hover:underline text-sm mt-2 transition-colors duration-200"
                         >
-                            Forgot Password?
+                            Forgot Password(?)
                         </button>
                     )}
                 </div>
