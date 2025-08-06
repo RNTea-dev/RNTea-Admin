@@ -1,73 +1,13 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Function to check if the requesting user is an admin
-    function isAdmin() {
-      // IMPORTANT: Replace 'your-app-id' with your actual Firebase project ID if __app_id is not automatically injected
-      // In Canvas environment, __app_id is usually provided, but explicitly setting it here for clarity if deploying manually.
-      return request.auth != null && exists(/databases/$(database)/documents/artifacts/$(appId)/admins/$(request.auth.uid));
+    
+    // Allow read access to all documents
+    match /{document=**} {
+      allow read: if true; // Public read
+      allow write: if false; // No one can write
     }
-
-    // Admins collection: Allows signed-in users to read (e.g., to check if they are admin), but no one can write directly.
-    match /artifacts/{appId}/admins/{adminUid} {
-      allow read: if request.auth != null;
-      allow write: if false; // Admins are added/managed via backend or console, not directly from client
-    }
-
-    // Hospitals collection: Publicly readable, signed-in users can create, only admins can update/delete.
-    match /artifacts/{appId}/public/data/hospitals/{hospitalId} {
-      allow read: if true; // Anyone can read hospital data
-      allow create: if request.auth != null; // Signed-in users can create new hospitals
-      allow update: if isAdmin(); // Only admins can update hospital details
-      allow delete: if isAdmin(); // Only admins can delete hospitals
-    }
-
-    // Doctors subcollection: Publicly readable, signed-in users can create.
-    // IMPORTANT: Only admins (or a trusted Cloud Function) can update 'ratings', 'numReviews', 'numComments'.
-    // This ensures data integrity for aggregated fields.
-    match /artifacts/{appId}/public/data/hospitals/{hospitalId}/doctors/{doctorId} {
-      allow read: if true; // Anyone can read doctor data
-      allow create: if request.auth != null; // Signed-in users can create new doctors
-      // Only admins can update doctor details, including aggregated fields like numReviews, averageRating, numComments.
-      // In a production app, a Cloud Function would typically handle these updates.
-      allow update: if isAdmin();
-      allow delete: if isAdmin(); // Only admins can delete doctors
-    }
-
-    // Reviews subcollection: Publicly readable, signed-in users can create their own reviews, only admins can update/delete any review.
-    match /artifacts/{appId}/public/data/hospitals/{hospitalId}/doctors/{doctorId}/reviews/{reviewId} {
-      allow read: if true; // Anyone can read reviews
-      // Signed-in user can create their own review, ensuring reviewerId matches their UID
-      allow create: if request.auth != null && request.resource.data.reviewerId == request.auth.uid;
-      allow update: if isAdmin(); // Only admins can update any review
-      allow delete: if isAdmin(); // Only admins can delete any review
-    }
-
-    // Comments subcollection (under reviews): Publicly readable, signed-in users can create their own comments, only admins can update/delete any comment.
-    match /artifacts/{appId}/public/data/hospitals/{hospitalId}/doctors/{doctorId}/reviews/{reviewId}/comments/{commentId} {
-      allow read: if true; // Anyone can read comments
-      // Signed-in user can create their own comment, ensuring userId matches their UID
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow update: if isAdmin(); // Only admins can update any comment
-      allow delete: if isAdmin(); // Only admins can delete any comment
-    }
-
-    // Likes subcollection (under reviews): Publicly readable (to get count), signed-in users can create/delete their own like.
-    // The document ID for a like should be the user's UID to ensure uniqueness per user per review.
-    match /artifacts/{appId}/public/data/hospitals/{hospitalId}/doctors/{doctorId}/reviews/{reviewId}/likes/{likeId} {
-      allow read: if true; // Anyone can read likes (to get count)
-      // Signed-in user can like (create a doc with their UID as likeId)
-      allow create: if request.auth != null && request.auth.uid == likeId;
-      // Signed-in user can unlike (delete their own doc with their UID as likeId)
-      allow delete: if request.auth != null && request.auth.uid == likeId;
-      // No 'update' rule for likes, as they are typically toggled (created/deleted)
-    }
-
-    // User-specific data: Users can only read and write to their own private data.
-    // This includes their private copy of reviews, comments, and likes.
-    match /artifacts/{appId}/users/{userId}/{documents=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
+    
   }
 }
+

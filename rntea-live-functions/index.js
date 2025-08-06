@@ -1,9 +1,10 @@
-const functions = require("firebase-functions");
-const admin = require("firebase-admin");
-const logger = require("firebase-functions/logger");
-const nodemailer = require("nodemailer");
-const {RecaptchaEnterpriseServiceClient} =
-  require("@google-cloud/recaptcha-enterprise");
+import * as functions from "firebase-functions";
+import fetch from "node-fetch";
+import admin from "firebase-admin";
+import * as logger from "firebase-functions/logger";
+import nodemailer from "nodemailer";
+import { RecaptchaEnterpriseServiceClient } from "@google-cloud/recaptcha-enterprise";
+
 
 admin.initializeApp();
 
@@ -74,7 +75,7 @@ function calculateAverageRating(reviews) {
 }
 
 
-exports.addReview = functions.https.onCall(async (data, context) => {
+export const addReview = functions.https.onCall(async (data, context) => {
   logger.info(
       "addReview function called",
       {data, auth: context.auth},
@@ -168,7 +169,7 @@ exports.addReview = functions.https.onCall(async (data, context) => {
   }
 });
 
-exports.addCommentToReview = functions.https.onCall(async (data, context) => {
+export const addCommentToReview = functions.https.onCall(async (data, context) => {
   logger.info("addCommentToReview function called", {data, auth: context.auth});
 
   if (!context.auth) {
@@ -189,9 +190,9 @@ exports.addCommentToReview = functions.https.onCall(async (data, context) => {
     logger.error("Invalid input for addCommentToReview",
         {hospitalId, doctorId, reviewIndex, commentText});
     throw new functions.https.HttpsError(
-        "invalid-argument",
-        "Missing or invalid comment data.",
-    );
+            "invalid-argument",
+            "Missing or invalid comment data.",
+        );
   }
 
   const filteredComment = filterContent(commentText);
@@ -269,7 +270,7 @@ exports.addCommentToReview = functions.https.onCall(async (data, context) => {
   }
 });
 
-exports.sendContactEmail = functions.https.onCall(async (data, context) => {
+export const sendContactEmail = functions.https.onCall(async (data, context) => {
   logger.info("sendContactEmail function called", {data});
 
   const {name, email, subject, message, recaptchaToken} = data;
@@ -378,5 +379,65 @@ exports.sendContactEmail = functions.https.onCall(async (data, context) => {
         "Failed to send message via email service.",
         error.message,
     );
+  }
+});
+
+// ✅ HIPAA PHI Detection Function
+export const checkHIPAA = functions.https.onCall(async (data, context) => {
+  const { text } = data;
+
+  if (!text || typeof text !== "string") {
+    throw new functions.https.HttpsError("invalid-argument", "Text is required.");
+  }
+
+  try {
+    // 🔗 Replace this with your actual Cloud Run Presidio URL
+    const PRESIDIO_API_URL = "https://presidio-analyzer-806310857835.us-central1.run.app/analyze";
+
+
+    const response = await fetch(PRESIDIO_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, language: "en" }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Presidio API error: ${response.statusText}`);
+    }
+
+    const entities = await response.json();
+
+    // ✅ Risk scoring logic
+    let score = 0;
+    const weights = {
+      PERSON: 20,
+      DATE_TIME: 20,
+      PHONE_NUMBER: 30,
+      US_SSN: 50,
+      LOCATION: 15,
+      EMAIL_ADDRESS: 25,
+    };
+
+    entities.forEach((entity) => {
+      score += weights[entity.entity_type] || 10;
+    });
+
+    if (score > 100) score = 100;
+
+    return {
+      score,
+      status:
+        score >= 75
+          ? "Critical"
+          : score >= 50
+          ? "High"
+          : score >= 25
+          ? "Moderate"
+          : "Safe",
+      entities,
+    };
+  } catch (error) {
+    console.error("Error checking HIPAA compliance:", error);
+    throw new functions.https.HttpsError("internal", "Failed to check HIPAA compliance.");
   }
 });

@@ -5,9 +5,20 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RNTea Admin Panel</title>
+
+    <!-- Performance Optimizations: Preload and Preconnect for faster font loading -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Open+Sans:wght@400;600&display=swap" as="style">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/admin-pEqqfgLu.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/admin-BGiSs7xM.css">
+
+    <script>
+        if (window.location.pathname === '/admin.html') {
+    window.history.replaceState(null, '', '/');
+    }
+
+    </script>
+  <script type="module" crossorigin src="/assets/main-CaNZaCS1.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/main-F4Gz9eNa.css">
 </head>
 <body class="font-sans antialiased text-gray-900">
     <div id="admin-root"></div>

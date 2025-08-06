@@ -1,4 +1,4 @@
-// src/admin.jsx
+/* src/admin.jsx
 import React, { useState, useEffect, createContext, useMemo, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
 import { initializeApp } from 'firebase/app';
@@ -149,3 +149,4 @@ if (adminRootElement) {
 } else {
     console.error("admin.jsx: ERROR - Admin root element not found in DOM. Cannot mount Admin App.");
 }
+*/

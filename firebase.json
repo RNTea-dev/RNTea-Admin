@@ -10,9 +10,7 @@
         "firebase-debug.*.log",
         "*.local"
       ],
-      "predeploy": [
-        
-      ]
+      "predeploy": []
     }
   ],
   "hosting": [
@@ -32,7 +30,7 @@
       ]
     },
     {
-      "target": "admin-site",
+      "target": "adminAPP",
       "public": "dist-admin",
       "ignore": [
         "firebase.json",

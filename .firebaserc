@@ -5,11 +5,14 @@
   "targets": {
     "rntea-cca78": {
       "hosting": {
+        "admin-site": [
+          "admin-rntea-cca78-92af9"
+        ],
         "main-site": [
           "rntea-cca78"
         ],
-        "admin-site": [
-          "admin-rntea-cca78"
+        "adminAPP": [
+          "rntea-admin1"
         ]
       }
     }

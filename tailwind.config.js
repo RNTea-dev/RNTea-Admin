@@ -1,12 +1,19 @@
-// tailwind.config.js
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
     "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}", // This line is crucial for React projects
+    "./src/**/*.{js,jsx,ts,tsx}"
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        heading: ['Playfair Display', 'serif'],
+        body: ['Open Sans', 'sans-serif'],
+      },
+      colors: {
+        'custom-beige': '#fce4d6',
+      }
+    }
   },
   plugins: [],
 }
