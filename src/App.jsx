@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from "react";
 import { Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
 import { FirebaseProvider } from "./context/FirebaseContext";
-import Logo from './assets/logo.png'; // adjust path if needed
+import Logo from './assets/RNTeaLogo.png';
 
 
 import Home from "./pages/Home.jsx";

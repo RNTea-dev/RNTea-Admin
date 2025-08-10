@@ -4,12 +4,12 @@ const getRiskColor = (status) => {
   switch (status) {
     case "Safe":
       return "bg-green-500";
-    case "Moderate":
+    case "Warning":
       return "bg-yellow-400";
-    case "High":
-      return "bg-orange-500";
-    case "Critical":
+    case "Flagged":
       return "bg-red-600";
+    case "Error":
+      return "bg-gray-400";
     default:
       return "bg-gray-400";
   }
@@ -23,7 +23,9 @@ const HIPAAThermometer = ({ score, status }) => {
       </p>
       <div className="w-full h-3 bg-gray-200 rounded-lg overflow-hidden">
         <div
-          className={`h-3 ${getRiskColor(status)} transition-all duration-500`}
+          className={`h-3 ${getRiskColor(
+            status
+          )} transition-all duration-500`}
           style={{ width: `${score}%` }}
         />
       </div>

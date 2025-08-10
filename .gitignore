@@ -26,3 +26,5 @@ yarn-error.log*
 .eslintcache
 .prettierrc.local
 *.log
+.env
+rntea-live-functions/.env

@@ -1,13 +1,29 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Allow read access to all documents
-    match /{document=**} {
-      allow read: if true; // Public read
-      allow write: if false; // No one can write
+
+    // Hospitals
+    match /artifacts/{appId}/public/data/hospitals/{hospitalId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if false;
+
+      // Doctors under a hospital
+      match /doctors/{doctorId} {
+        allow read: if true;
+        allow create: if true;
+        allow update: if true;
+        allow delete: if false;
+
+        // Reviews under a doctor
+        match /reviews/{reviewId} {
+          allow read: if true;
+          allow create: if true;
+          allow update: if true;
+          allow delete: if false;
+        }
+      }
     }
-    
   }
 }
-

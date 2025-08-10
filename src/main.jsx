@@ -43,13 +43,16 @@ if (rootElement) {
     console.log("main.jsx: React App with Router mount instruction sent.");
 } else {
     console.error("main.jsx: ERROR - Root element not found in DOM. Cannot mount React App.");
-import React from 'react';
+
+}
+    /*import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App.jsx';
 import './index.css';
 
-/*const rootElement = document.getElementById('root');
+
+const rootElement = document.getElementById('root');
 
 if (rootElement) {
   ReactDOM.createRoot(rootElement).render(

@@ -20,8 +20,13 @@ import { httpsCallable } from "firebase/functions";
 import { functions } from "../utils/firebaseConfig"; // Make sure your firebase.js exports this
 
 
+// ✅ **FIX: Define the callable function outside the component.**
+// This ensures it's created only once and doesn't trigger re-renders.
+const checkHIPAAFunction = httpsCallable(functions, "checkHIPAA");
+
 
 const Feed = () => {
+
   const { db, currentUser, appId } = useContext(FirebaseContext);
   const hospitalsPath = `artifacts/${appId}/public/data/hospitals`;
 
@@ -43,17 +48,21 @@ const Feed = () => {
   const [loadingDoctors, setLoadingDoctors] = useState(false);
   const [showReviewForm, setShowReviewForm] = useState(false); // New state for review form visibility
 
-  // ✅ HIPAA state and callable function
-const [hipaaScore, setHipaaScore] = useState(0);
-const [hipaaStatus, setHipaaStatus] = useState("Safe");
-const [showModal, setShowModal] = useState(false);
-const [modalContent, setModalContent] = useState({ title: "", message: "" });
-
-const checkHIPAAFunction = httpsCallable(functions, "checkHIPAA");
+  // ✅ HIPAA state
+  const [hipaaScore, setHipaaScore] = useState(0);
+  const [hipaaStatus, setHipaaStatus] = useState("Safe");
+  const [showModal, setShowModal] = useState(false);
+  const [modalContent, setModalContent] = useState({ title: "", message: "" });
+  const [flaggedPhrases, setFlaggedPhrases] = useState([]);
 
   // Refs for scrolling
   const doctorSectionRef = useRef(null);
   const reviewsSectionRef = useRef(null);
+
+  useEffect(() => {
+  console.log("Feed mounted");
+  return () => console.log("Feed unmounted");
+}, []);
 
   useEffect(() => {
     const fetchHospitals = async () => {
@@ -210,28 +219,55 @@ const handleSelectDoctor = (doctor) => {
   });
 };
 
-// ✅ Real-time HIPAA check while typing
+// ✅ **FIX: Added robust response handling**
 useEffect(() => {
-  if (!newReview.trim()) {
+  const text = newReview.trim();
+
+  // Skip empty/very short input
+  if (text.length < 3) {
     setHipaaScore(0);
     setHipaaStatus("Safe");
+    setFlaggedPhrases([]);
     return;
   }
 
+  // Debounce + cancel in-flight
+  const ctrl = new AbortController();
+  const timer = setTimeout(async () => {
+    try {
+      if (ctrl.signal.aborted) return;
 
-    const timer = setTimeout(async () => {
-        try {
-        const result = await checkHIPAAFunction({ text: newReview });
-        const { score, status } = result.data;
-        setHipaaScore(score);
-        setHipaaStatus(status);
-        } catch (error) {
-        console.error("HIPAA check error:", error);
-        }
-    }, 700); // debounce
+      const res = await checkHIPAAFunction({ text });
+      if (ctrl.signal.aborted) return;
 
-  return () => clearTimeout(timer);
+      let data = res?.data;
+      if (typeof data === "string") {
+        try { data = JSON.parse(data); } catch { data = null; }
+      }
+
+      const score = Number(data?.score ?? 0);
+      const status = typeof data?.status === "string" ? data.status : "Error";
+      const flagged = Array.isArray(data?.flagged_phrases) ? data.flagged_phrases : [];
+
+      setHipaaScore(score);
+      setHipaaStatus(status);
+      setFlaggedPhrases(flagged);
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+      console.error("HIPAA check error:", err);
+      setHipaaScore(0);
+      setHipaaStatus("Error");
+      setFlaggedPhrases([]);
+    }
+  }, 700);
+
+  return () => {
+    ctrl.abort();
+    clearTimeout(timer);
+  };
 }, [newReview]);
+
+
 
   const handleAddReview = async () => {
     if (!newReview.trim() || !selectedDoctor || !selectedHospital) return;
@@ -462,6 +498,17 @@ useEffect(() => {
                 {/* ✅ Insert HIPAA Thermometer here */}
                 <HIPAAThermometer score={hipaaScore} status={hipaaStatus} />
 
+                {flaggedPhrases.length > 0 && (
+                    <div className="p-4 rounded-md bg-red-100 border border-red-400 text-red-700 mb-4">
+                        <p className="font-semibold">⚠️ Potential PHI Detected:</p>
+                        <ul className="list-disc list-inside">
+                            {flaggedPhrases.map((phrase, index) => (
+                                <li key={index}>{phrase}</li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+                
                 <button onClick={handleAddReview} className="orange-btn mx-auto block"> {/* Centered button */}
                 Submit Tea
                 </button>
