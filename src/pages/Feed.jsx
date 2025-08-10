@@ -231,19 +231,26 @@ useEffect(() => {
     return;
   }
 
-  // Debounce + cancel in-flight
   const ctrl = new AbortController();
   const timer = setTimeout(async () => {
     try {
       if (ctrl.signal.aborted) return;
 
+      // --- ADD: log what you're sending (no PHI content, just length) ---
+      console.log("[HIPAA FE] calling checkHIPAA", { len: text.length });
+
       const res = await checkHIPAAFunction({ text });
-      if (ctrl.signal.aborted) return;
+
+      // --- ADD: log raw callable result wrapper ---
+      console.log("[HIPAA FE] raw callable result:", res);
 
       let data = res?.data;
       if (typeof data === "string") {
         try { data = JSON.parse(data); } catch { data = null; }
       }
+
+      // --- ADD: log server-side debug info (version, path, timings, regex types) ---
+      console.log("[HIPAA FE] server debug:", data?.debug);
 
       const score = Number(data?.score ?? 0);
       const status = typeof data?.status === "string" ? data.status : "Error";

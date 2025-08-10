@@ -1,5 +1,4 @@
 const functions = require("firebase-functions");
-const fetch = require("node-fetch");
 const admin = require("firebase-admin");
 const logger = require("firebase-functions/logger");
 const nodemailer = require("nodemailer");
@@ -173,208 +172,286 @@ exports.sendContactEmail = functions.https.onCall(async (data) => {
   await mailTransport.sendMail(mailOptions);
   return { success: true, message: "Your message has been sent successfully!" };
 });
-exports.checkHIPAA = functions.https.onCall(async (data, context) => {
-  const text = (data.text || "").trim();
-  logger.info("HIPAA function received text:", { len: text.length });
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    logger.error("Gemini API key is missing from environment variables.");
-    // If we have obvious PHI from regex, return conservative Block; else Safe
-    const regexFlags = [];
-    // Keep this minimal path consistent with your main regex set
-    if (/\b\d{3}-\d{2}-\d{4}\b/.test(text)) regexFlags.push("SSN");
-    if (/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(text)) regexFlags.push("Email Address");
-    if (/\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}\b/.test(text)) regexFlags.push("Full Name");
-    if (regexFlags.length) {
-      return {
-        score: 90,
-        status: "Block",
-        flagged_phrases: regexFlags,
-        redacted_text: text.replace(/\S/g, "•"),
-        countsByType: regexFlags.reduce((acc, lab) => (acc[lab] = (acc[lab] || 0) + 1, acc), {})
-      };
-    }
-    return { score: 10, status: "Safe", flagged_phrases: [], redacted_text: text, countsByType: {} };
+exports.checkHIPAA = functions.https.onCall(async (data, context) => {
+  const crypto = require("crypto");           // safe hash for correlation (no PHI)
+  const tStart = Date.now();
+  const version = "hipaa-b-override:v1.6-verbose";
+
+  // --- unwrap Firebase Callable payloads consistently ---
+  function unwrapText(payload) {
+    if (!payload) return "";
+    if (typeof payload === "string") return payload;
+    if (typeof payload.text === "string") return payload.text;
+    if (payload.data && typeof payload.data.text === "string") return payload.data.text; // handles { data: { text } }
+    return "";
   }
 
-  // -------------------------
-  // Your original regex checks
-  // (kept the same patterns you had)
-  // -------------------------
-  const regexFlags = [];
-  const dobRegex = /\b(?:0?[1-9]|1[0-2])[\/-](?:0?[1-9]|[12][0-9]|3[01])[\/-](?:\d{2}|\d{4})\b/;
-  if (dobRegex.test(text)) regexFlags.push("Date of Birth");
-  const ssnRegex = /\b\d{3}-\d{2}-\d{4}\b/;
-  if (ssnRegex.test(text)) regexFlags.push("SSN");
-  const definitiveNameRegex = /(Patient['’]s?\s+)(\b[A-Z][a-z]+(?:\s+\b[A-Z][a-z]+)+)/;
-  const nm = text.match(definitiveNameRegex);
-  if (nm && nm[2]) regexFlags.push(`Full Name: ${nm[2].trim()}`);
-  const emailRegex = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
-  if (emailRegex.test(text)) regexFlags.push("Email Address");
-  const addressRegex = /\b\d{1,5}\s+[A-Za-z0-9'.\-\s]{3,}\s(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd)\b/;
-  if (addressRegex.test(text)) regexFlags.push("Street Address");
-  const mrnRegex = /\b(?:MRN|Medical\s*Record)\s*:?[\sA-Za-z0-9-]{4,}\b/i;
-  if (mrnRegex.test(text)) regexFlags.push("Medical Record Number");
-  const zipRegex = /\b\d{5}(?:-\d{4})?\b/;
-  if (zipRegex.test(text)) regexFlags.push("Zip Code");
+  const textRaw = unwrapText(data);
+  const text = (textRaw || "").trim();
 
-  logger.info("regexFlags", { regexFlags });
+  // --- input metadata (never log raw text) ---
+  const inputLen = text.length;
+  const inputHash = crypto.createHash("sha256").update(text).digest("hex").slice(0, 12); // short hash
 
-  // NOTE: Option B — DO NOT early-return here.
-  // We still call the LLM, then override the final result if regex caught PHI.
+  logger.info("[HIPAA] param snapshot", {
+    version,
+    topLevelKeys: Object.keys(data || {}),
+    hasNestedData: !!data?.data,
+    typeofTextTop: typeof data?.text,
+    typeofTextNested: typeof data?.data?.text,
+    inputLen,
+    inputHash
+  });
 
-  try {
-    // -------------------------
-    // LLM call (Generative Language API)
-    // -------------------------
-    const prompt = `
-You are an expert in HIPAA compliance. Review the following text and assess if it contains any Protected Health Information (PHI) such as:
-- Full names
-- Birth dates
-- Medical record numbers
-- Specific locations
-- Contact details (email, phone, address)
-- Dates of service
-- Any info that could identify a patient directly or indirectly
 
-Respond strictly in JSON:
+  logger.info("[HIPAA] start", {
+    version,
+    inputLen,
+    inputHash,
+    isAuthed: !!context?.auth,
+    project: process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || "unknown",
+    // region is not directly exposed; default Firebase is us-central1
+    regionGuess: "us-central1",
+    node: process.version,
+  });
+
+  // --- API key check ---
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    logger.error("[HIPAA] missing GEMINI_API_KEY", { version, inputHash });
+    return {
+      score: 10,
+      status: "Safe",
+      flagged_phrases: [],
+      redacted_text: text,
+      countsByType: {},
+      debug: { version, used: "fallback_safe_no_api_key", inputLen, inputHash }
+    };
+  }
+
+  // --- Regex pass (collect matches, not just labels) ---
+  const findAll = (re) => {
+    const out = [];
+    try {
+      const g = re.flags.includes("g") ? re : new RegExp(re.source, re.flags + "g");
+      for (const m of text.matchAll(g)) out.push(m[0]);
+    } catch { /* ignore bad regex */ }
+    return out;
+  };
+
+  const patterns = {
+    SSN: /\b\d{3}-\d{2}-\d{4}\b/,
+    Email: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
+    Phone: /\b(?:\(\d{3}\)\s*|\d{3}[-.\s])\d{3}[-.\s]\d{4}\b/,
+    ZIP: /\b\d{5}(?:-\d{4})?\b/,
+    Date: /\b\d{1,2}[\/-]\d{1,2}[\/-](?:\d{2}|\d{4})\b/,
+    Name: /\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})*\b/,
+    Address: /\b\d{1,5}\s+[A-Za-z0-9'.\-\s]{3,}\s(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd)\b/i,
+    MRN: /\b(?:MRN|Medical\s*Record)\s*:?[\sA-Za-z0-9-]{4,}\b/i
+  };
+
+  const regexMatches = {};
+  Object.entries(patterns).forEach(([type, re]) => {
+    const hits = findAll(re);
+    if (hits.length) regexMatches[type] = hits;
+  });
+
+  const regexFlags = Object.keys(regexMatches);
+  const regexHitCount = regexFlags.reduce((n, k) => n + regexMatches[k].length, 0);
+
+  logger.info("[HIPAA] regex summary", {
+    version,
+    inputHash,
+    types: regexFlags,
+    counts: Object.fromEntries(Object.entries(regexMatches).map(([k, v]) => [k, v.length])),
+    totalHits: regexHitCount
+  });
+
+  // --- Build LLM request (Generative Language API) ---
+  const prompt = `
+You are a HIPAA compliance assistant. Inspect the text and output ONLY JSON:
+
 {
   "score": 0-100,
   "status": "Safe" | "Caution" | "Block" | "Warning" | "Flagged",
-  "flagged_phrases": [list of exact strings],
+  "flagged_phrases": string[],
   "redacted_text": string,
   "countsByType": { "<Type>": number }
 }
 
-Text to evaluate:
+Rules:
+- Consider HIPAA's 18 identifiers.
+- "Block" for direct identifiers (names + exact dates + addresses + phone/SSN/etc.).
+- Use [REDACTED:<TYPE>] in "redacted_text".
+- JSON only, no prose.
+
+Text:
 """${text}"""
 `.trim();
 
-    const payload = {
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        // schema hint helps but isn't guaranteed; we still normalize below
-        responseSchema: {
-          type: "OBJECT",
-          properties: {
-            score: { type: "NUMBER" },
-            status: { type: "STRING", enum: ["Safe", "Caution", "Block", "Warning", "Flagged"] },
-            flagged_phrases: { type: "ARRAY", items: { type: "STRING" } },
-            redacted_text: { type: "STRING" },
-            countsByType: { type: "OBJECT" }
-          },
-          required: ["score", "status", "flagged_phrases"]
-        },
-        temperature: 0
-      }
-    };
+  const payload = {
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0
+    }
+  };
 
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-    const response = await fetch(apiUrl, {
+  const modelId = "gemini-2.5-flash-preview-05-20";
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
+
+  logger.info("[HIPAA] LLM request: sending", {
+    version,
+    inputHash,
+    modelId,
+    urlHost: "generativelanguage.googleapis.com",
+    payloadBytes: Buffer.byteLength(JSON.stringify(payload), "utf8")
+  });
+
+  // --- Call LLM with timing + header capture ---
+  const tLLM0 = Date.now();
+  let response, status, requestId, textPreview;
+  try {
+    response = await fetch(apiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-
-    if (!response.ok) {
-      throw new Error(`API call failed with status: ${response.status}`);
-    }
-
-    const result = await response.json();
-    const jsonString = result?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    // -------------------------
-    // Normalize + Option B override
-    // -------------------------
-    let parsedResult = {};
-    if (jsonString) {
-      try {
-        parsedResult = JSON.parse(jsonString);
-      } catch (e) {
-        logger.warn("Gemini returned non-JSON text; continuing with empty object.", {
-          preview: String(jsonString).slice(0, 120)
-        });
-        parsedResult = {};
-      }
-    }
-
-    // Map statuses like "Warning"/"Flagged" to our standard set
-    const normalizeStatus = (s) => {
-      if (!s) return "Safe";
-      const t = String(s).toLowerCase();
-      if (t === "warning") return "Caution";
-      if (t === "flagged") return "Block";
-      if (t === "caution" || t === "block" || t === "safe") return s[0].toUpperCase() + s.slice(1).toLowerCase();
-      return "Safe";
-    };
-
-    let out = {
-      score: Number(parsedResult?.score ?? 5),
-      status: normalizeStatus(parsedResult?.status),
-      flagged_phrases: Array.isArray(parsedResult?.flagged_phrases) ? parsedResult.flagged_phrases : [],
-      redacted_text: typeof parsedResult?.redacted_text === "string" ? parsedResult.redacted_text : undefined,
-      countsByType: (parsedResult && typeof parsedResult.countsByType === "object") ? parsedResult.countsByType : {}
-    };
-
-    // --- Option B override: if regex saw direct identifiers, force higher risk ---
+    status = response.status;
+    requestId = response.headers.get("x-request-id") || response.headers.get("x-guploader-uploadid") || null;
+  } catch (e) {
+    logger.error("[HIPAA] LLM network error", { version, inputHash, err: e?.message });
+    // Fallback logic
+    const debug = { version, used: "fallback_regex_network_error", inputLen, inputHash, err: e?.message, llmMs: Date.now() - tLLM0 };
     if (regexFlags.length) {
-      // merge regex hits
-      const merged = new Set(out.flagged_phrases.concat(regexFlags));
-      out.flagged_phrases = Array.from(merged);
-
-      // force Block + high score
-      out.status = "Block";
-      out.score = Math.max(out.score || 0, 90);
-
-      // counts
-      out.countsByType = out.countsByType || {};
-      regexFlags.forEach((label) => {
-        const key =
-          /SSN/i.test(label) ? "SSN" :
-          /Email/i.test(label) ? "Email" :
-          /Phone/i.test(label) ? "Phone" :
-          /Zip/i.test(label) ? "ZIP" :
-          /Date/i.test(label) ? "Date" :
-          /Full Name|Name/i.test(label) ? "Name" :
-          /Address/i.test(label) ? "Address" :
-          /Medical Record/i.test(label) ? "MRN" :
-          "Other";
-        out.countsByType[key] = (out.countsByType[key] || 0) + 1;
-      });
-
-      // redaction fallback if LLM didn't provide one
-      if (!out.redacted_text) {
-        out.redacted_text = text.replace(/\S/g, "•");
-      }
-    }
-
-    // final defaults
-    if (!out.redacted_text) out.redacted_text = text;
-    if (!Array.isArray(out.flagged_phrases)) out.flagged_phrases = [];
-    if (!out.countsByType || typeof out.countsByType !== "object") out.countsByType = {};
-
-    logger.info("✅ Returning normalized HIPAA result", {
-      status: out.status,
-      score: out.score,
-      regexHits: regexFlags.length,
-      flagged: out.flagged_phrases.length
-    });
-    return out;
-  } catch (err) {
-    logger.error("Gemini API Moderation error:", { message: err?.message, stack: err?.stack });
-
-    // Conservative fallback on error
-    if (regexFlags.length) {
+      const counts = {};
+      regexFlags.forEach((k) => counts[k] = regexMatches[k].length);
       return {
-        score: 90,
-        status: "Block",
-        flagged_phrases: regexFlags,
-        redacted_text: text.replace(/\S/g, "•"),
-        countsByType: regexFlags.reduce((acc, lab) => (acc[lab] = (acc[lab] || 0) + 1, acc), {})
+        score: 90, status: "Block",
+        flagged_phrases: regexFlags, redacted_text: text.replace(/\S/g, "•"),
+        countsByType: counts, debug
       };
     }
-    return { score: 10, status: "Safe", flagged_phrases: [], redacted_text: text, countsByType: {} };
+    return { score: 10, status: "Safe", flagged_phrases: [], redacted_text: text, countsByType: {}, debug };
   }
+
+  const tLLM1 = Date.now();
+  logger.info("[HIPAA] LLM response: received", {
+    version,
+    inputHash,
+    status,
+    requestId,
+    llmMs: tLLM1 - tLLM0
+  });
+
+  if (!response.ok) {
+    let bodyPreview = "";
+    try { bodyPreview = (await response.text()).slice(0, 200); } catch {}
+    logger.error("[HIPAA] LLM non-200", { version, inputHash, status, requestId, bodyPreview });
+    const debug = { version, used: "fallback_regex_http_error", status, requestId, llmMs: tLLM1 - tLLM0, inputHash };
+    if (regexFlags.length) {
+      const counts = {};
+      regexFlags.forEach((k) => counts[k] = regexMatches[k].length);
+      return {
+        score: 90, status: "Block",
+        flagged_phrases: regexFlags, redacted_text: text.replace(/\S/g, "•"),
+        countsByType: counts, debug
+      };
+    }
+    return { score: 10, status: "Safe", flagged_phrases: [], redacted_text: text, countsByType: {}, debug };
+  }
+
+  // --- Parse and normalize LLM JSON ---
+  const tParse0 = Date.now();
+  let resultJson = {};
+  try {
+    const result = await response.json();
+    const jsonString = result?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    textPreview = String(jsonString).slice(0, 120);
+    resultJson = JSON.parse(jsonString);
+  } catch (e) {
+    logger.warn("[HIPAA] LLM parse warning", { version, inputHash, requestId, warn: e?.message });
+    resultJson = {};
+  }
+  const tParse1 = Date.now();
+
+  const normalizeStatus = (s) => {
+    const t = String(s || "Safe").toLowerCase();
+    if (t === "warning") return "Caution";
+    if (t === "flagged") return "Block";
+    return ["safe", "caution", "block"].includes(t) ? (t[0].toUpperCase() + t.slice(1)) : "Safe";
+  };
+
+  let out = {
+    score: Number(resultJson?.score ?? 5),
+    status: normalizeStatus(resultJson?.status),
+    flagged_phrases: Array.isArray(resultJson?.flagged_phrases) ? resultJson.flagged_phrases : [],
+    redacted_text: typeof resultJson?.redacted_text === "string" ? resultJson.redacted_text : undefined,
+    countsByType: (resultJson && typeof resultJson.countsByType === "object") ? resultJson.countsByType : {}
+  };
+
+  // --- Option B override (regex → force Block) ---
+  let usedPath = "llm_only";
+  if (regexFlags.length) {
+    // merge phrases (avoid logging their content!)
+    const merged = new Set(out.flagged_phrases.concat(regexFlags));
+    out.flagged_phrases = Array.from(merged);
+
+    // force Block + high score
+    out.status = "Block";
+    out.score = Math.max(out.score || 0, 90);
+
+    // counts
+    out.countsByType = out.countsByType || {};
+    regexFlags.forEach((type) => {
+      out.countsByType[type] = (out.countsByType[type] || 0) + (regexMatches[type]?.length || 1);
+    });
+
+    // redaction fallback
+    if (!out.redacted_text) out.redacted_text = text.replace(/\S/g, "•");
+    usedPath = "llm+override";
+  }
+
+  // --- Final defaults ---
+  if (!out.redacted_text) out.redacted_text = text;
+  if (!Array.isArray(out.flagged_phrases)) out.flagged_phrases = [];
+  if (!out.countsByType || typeof out.countsByType !== "object") out.countsByType = {};
+
+  // --- Final log (do not include PHI) ---
+  const tEnd = Date.now();
+  logger.info("[HIPAA] done", {
+    version,
+    inputHash,
+    status: out.status,
+    score: out.score,
+    regexTypes: regexFlags,
+    regexHitCount,
+    usedPath,
+    timings: {
+      totalMs: tEnd - tStart,
+      llmMs: tLLM1 - tLLM0,
+      parseMs: tParse1 - tParse0
+    },
+    requestId
+  });
+
+  // --- Return with debug (no PHI) ---
+  return {
+    ...out,
+    debug: {
+      version,
+      inputLen,
+      inputHash,
+      used: usedPath,
+      modelId,
+      requestId,
+      timings: { totalMs: tEnd - tStart, llmMs: tLLM1 - tLLM0, parseMs: tParse1 - tParse0 },
+      regex: {
+        types: regexFlags,
+        counts: Object.fromEntries(Object.entries(regexMatches).map(([k, v]) => [k, v.length])),
+        totalHits: regexHitCount
+      }
+    }
+  };
 });
