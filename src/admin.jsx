@@ -1,152 +1,121 @@
-/* src/admin.jsx
+// src/admin.jsx
 import React, { useState, useEffect, createContext, useMemo, useCallback } from 'react';
-import ReactDOM from 'react-dom/client';
-import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth'; // Removed signInWithEmailAndPassword as it's not needed for root init
-import {
-    getFirestore,
-    collection,
-    doc,
-    getDoc,
-    getDocs,
-    setDoc,
-    updateDoc,
-    deleteDoc,
-    query,
-    where,
-    arrayUnion
+import { createRoot } from 'react-dom/client';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore,
+  collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, arrayUnion
 } from 'firebase/firestore';
 
-import AdminPanel from './pages/AdminPanel.jsx';
+import AdminDashboard from './pages/AdminDashboard.jsx';
+import SignIn from './components/SignIn.jsx'; // ⬅️ new
 import MessageBox from './components/MessageBox.jsx';
-import ConfirmModal from './components/ConfirmModal.jsx';
+import ConfirmModal from './components/ConfirmModal.jsx'; // keep if used
 import './index.css';
 
 export const FirebaseContext = createContext(null);
 
-// MANDATORY: Firebase configuration and initial app ID provided by the Canvas environment.
-// Access these safely.
+// Canvas-provided globals (if present)
 const canvasFirebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : null; // __app_id is typically a string, not JSON.parse
-
-// --- IMPORTANT: Removed hardcoded defaultFirebaseConfig for security. ---
-// --- Configuration is now loaded from environment variables (Vite's import.meta.env) ---
-// --- or from the Canvas environment's __firebase_config and __app_id. ---
+const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : null;
 
 function AdminAppRoot() {
-    const [firebaseAppInstance, setFirebaseAppInstance] = useState(null);
-    const [db, setDb] = useState(null);
-    const [auth, setAuth] = useState(null);
-    const [currentUserId, setCurrentUserId] = useState(null);
-    const [authReady, setAuthReady] = useState(false);
-    const [loadingFirebase, setLoadingFirebase] = useState(true);
+  const [app, setApp] = useState(null);
+  const [db, setDb] = useState(null);
+  const [auth, setAuth] = useState(null);
+  const [userId, setUserId] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [loadingFirebase, setLoadingFirebase] = useState(true);
 
-    const [rootMessage, setRootMessage] = useState({ text: '', type: '' });
-    const showRootMessage = useCallback((text, type) => {
-        setRootMessage({ text, type });
-        setTimeout(() => setRootMessage({ text: '', type: '' }), 5000);
-    }, []);
+  const [rootMessage, setRootMessage] = useState({ text: '', type: '' });
+  const showRootMessage = useCallback((text, type) => {
+    setRootMessage({ text, type });
+    setTimeout(() => setRootMessage({ text: '', type: '' }), 5000);
+  }, []);
 
-    useEffect(() => {
-        const initializeFirebase = async () => {
-            try {
-                // Determine Firebase config to use: Canvas environment or Vite environment variables
-                let configToUse = canvasFirebaseConfig;
-                if (!configToUse) {
-                    // If not running in Canvas, load from Vite environment variables
-                    configToUse = {
-                        apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-                        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-                        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-                        storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-                        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-                        appId: import.meta.env.VITE_FIREBASE_APP_ID,
-                        measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
-                    };
-                }
-
-                // Validate that essential config values are present
-                if (!configToUse.apiKey || !configToUse.projectId || !configToUse.appId) {
-                    throw new Error("Firebase configuration is incomplete. Check environment variables or Canvas setup.");
-                }
-
-                const appInstance = initializeApp(configToUse);
-                const authInstance = getAuth(appInstance);
-                const dbInstance = getFirestore(appInstance);
-
-                setFirebaseAppInstance(appInstance);
-                setAuth(authInstance);
-                setDb(dbInstance);
-
-                const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
-                    if (user) {
-                        setCurrentUserId(user.uid);
-                    } else {
-                        setCurrentUserId(null); // No user authenticated
-                        showRootMessage('Please log in to access the Admin Panel.', 'info');
-                    }
-                    setAuthReady(true);
-                    setLoadingFirebase(false);
-                });
-
-                // Removed hardcoded login block and __initial_auth_token usage for production
-                // This app relies on the AdminPanel.jsx form for manual login.
-                if (!authInstance.currentUser) {
-                    setLoadingFirebase(false);
-                }
-
-                return () => {
-                    if (unsubscribe) unsubscribe();
-                };
-            } catch (error) {
-                console.error("Firebase Initialization Error for Admin App:", error);
-                showRootMessage(`FATAL ERROR: Failed to initialize Firebase for admin: ${error.message}. Please check console.`, 'error');
-                setLoadingFirebase(false);
-                setAuthReady(false);
-            }
+  useEffect(() => {
+    const init = async () => {
+      try {
+        // Prefer Canvas config, fallback to Vite env
+        const config = canvasFirebaseConfig || {
+          apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+          authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+          projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+          storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+          messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+          appId: import.meta.env.VITE_FIREBASE_APP_ID,
+          measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
         };
-        initializeFirebase();
-    }, []);
 
-    const firebaseContextValue = useMemo(() => ({
-        app: firebaseAppInstance,
-        db,
-        auth,
-        userId: currentUserId,
-        authReady,
-        // Use canvasAppId if available, fallback to projectId from Vite environment variables
-        appId: canvasAppId || import.meta.env.VITE_FIREBASE_PROJECT_ID,
-        loadingFirebase,
-        message: rootMessage,
-        showAdminMessage: showRootMessage,
+        if (!config?.apiKey || !config?.projectId || !config?.appId) {
+          throw new Error('Firebase configuration is incomplete. Check .env or Canvas setup.');
+        }
 
-        collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, arrayUnion
-    }), [
-        firebaseAppInstance, db, auth, currentUserId, authReady,
-        loadingFirebase, rootMessage, showRootMessage, canvasAppId // Added canvasAppId to dependencies
-    ]);
+        // Avoid duplicate-app error
+        const appInstance = getApps().length ? getApp() : initializeApp(config);
+        const authInstance = getAuth(appInstance);
+        const dbInstance = getFirestore(appInstance);
 
-    return (
-        <FirebaseContext.Provider value={firebaseContextValue}>
-            <MessageBox message={rootMessage.text} type={rootMessage.type} />
-            {loadingFirebase ? (
-                <p className="text-center text-gray-500 py-8">Initializing Admin Application and Firebase...</p>
-            ) : (
-                <AdminPanel />
-            )}
-        </FirebaseContext.Provider>
-    );
+        setApp(appInstance);
+        setAuth(authInstance);
+        setDb(dbInstance);
+
+        const unsub = onAuthStateChanged(authInstance, (user) => {
+          setUserId(user ? user.uid : null);
+          if (!user) showRootMessage('Please log in to access the Admin Panel.', 'info');
+          setAuthReady(true);
+          setLoadingFirebase(false);
+        });
+
+        return () => unsub && unsub();
+      } catch (err) {
+        console.error('Firebase Initialization Error (Admin):', err);
+        showRootMessage(`FATAL: Failed to initialize Firebase: ${err.message}`, 'error');
+        setLoadingFirebase(false);
+        setAuthReady(false);
+      }
+    };
+
+    init();
+  }, [showRootMessage]);
+
+  const ctx = useMemo(() => ({
+    app,
+    db,
+    auth,
+    userId,
+    authReady,
+    appId: canvasAppId || import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    appId: canvasAppId || import.meta.env.VITE_FIREBASE_APP_ID,
+    loadingFirebase,
+    message: rootMessage,
+    showAdminMessage: showRootMessage,
+    // expose a few helpers if children want them
+    collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, arrayUnion
+  }), [app, db, auth, userId, authReady, loadingFirebase, rootMessage, showRootMessage]);
+
+  return (
+    <FirebaseContext.Provider value={ctx}>
+      <MessageBox message={rootMessage.text} type={rootMessage.type} />
+      {loadingFirebase ? (
+        <p className="text-center text-gray-500 py-8">Initializing Admin Application and Firebase...</p>
+      ) : auth && auth.currentUser ? (
+        <AdminDashboard />
+      ) : (
+        <SignIn />
+      )}
+    </FirebaseContext.Provider>
+  );
 }
 
-const adminRootElement = document.getElementById('admin-root');
-if (adminRootElement) {
-    ReactDOM.createRoot(adminRootElement).render(
-        <React.StrictMode>
-            <AdminAppRoot />
-        </React.StrictMode>
-    );
+// ---- Mount ----
+const container = document.getElementById('admin-root');
+if (!container) {
+  console.error('admin.jsx: #admin-root not found in DOM.');
 } else {
-    console.error("admin.jsx: ERROR - Admin root element not found in DOM. Cannot mount Admin App.");
+  createRoot(container).render(
+    <React.StrictMode>
+      <AdminAppRoot />
+    </React.StrictMode>
+  );
 }
-*/

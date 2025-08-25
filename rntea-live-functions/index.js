@@ -413,6 +413,32 @@ Text:
     usedPath = "llm+override";
   }
 
+      // --- Clean up and limit flagged phrases (dedupe, trim, drop trivial but keep short ID types) ---
+    if (!Array.isArray(out.flagged_phrases)) out.flagged_phrases = [];
+
+    const SHORT_TYPE_KEEP = /^(SSN|DOB|MRN|ZIP)$/i;
+
+    out.flagged_phrases = Array.from(new Set(out.flagged_phrases))
+      .map(s => (typeof s === "string" ? s.trim() : ""))
+      .filter(s => {
+        if (!s) return false;
+        if (SHORT_TYPE_KEEP.test(s)) return true;       // keep short critical types
+        if (/^\d{1,3}$/.test(s)) return false;          // drop bare 1–3 digit tokens like "123"
+        return s.length >= 4;                           // keep normal terms/phrases
+      })
+      .slice(0, 12);
+
+      const rank = (s) => {
+      const t = s.toLowerCase();
+      if (/(ssn|mrn)/.test(t)) return 1;
+      if (/(email|phone|address)/.test(t)) return 2;
+      if (/(name|date|dob|zip)/.test(t)) return 3;
+      return 4;
+    };
+    out.flagged_phrases.sort((a, b) => rank(a) - rank(b));
+
+
+
   // --- Final defaults ---
   if (!out.redacted_text) out.redacted_text = text;
   if (!Array.isArray(out.flagged_phrases)) out.flagged_phrases = [];

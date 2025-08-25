@@ -30,3 +30,6 @@ yarn-error.log*
 rntea-live-functions/.env
 .env
 rntea-live-functions/.env
+.env
+.env.*
+*.env

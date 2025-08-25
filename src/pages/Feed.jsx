@@ -24,6 +24,47 @@ import { functions } from "../utils/firebaseConfig"; // Make sure your firebase.
 // This ensures it's created only once and doesn't trigger re-renders.
 const checkHIPAAFunction = httpsCallable(functions, "checkHIPAA");
 
+// --- Build typed detections for display (NAME / DOB / EMAIL / SSN / PHONE) ---
+const buildDetections = (text, flagged = []) => {
+  const t = String(text || "");
+  const out = new Map(); // type -> Set(values)
+  const add = (type, v) => {
+    if (!v) return;
+    if (!out.has(type)) out.set(type, new Set());
+    out.get(type).add(v);
+  };
+
+  const emailRe = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+  const ssnRe = /\b\d{3}-\d{2}-\d{4}\b/g;
+  const phoneRe = /\b(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]\d{4}\b/g;
+  const dobRe = /\b\d{1,2}[\/-]\d{1,2}[\/-](?:\d{2}|\d{4})\b/g;
+  const nameRe = /\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})*\b/g;
+
+  t.match(emailRe)?.forEach(v => add("EMAIL", v));
+  t.match(ssnRe)?.forEach(v => add("SSN", v));
+  t.match(phoneRe)?.forEach(v => add("PHONE", v));
+  t.match(dobRe)?.forEach(v => add("DOB", v));
+  t.match(nameRe)?.forEach(v => add("NAME", v));
+
+  // also sweep LLM phrases for exact substrings we care about
+  flagged.forEach(p => {
+    if (typeof p !== "string") return;
+    const s = p.trim();
+    if (s.match(emailRe)) add("EMAIL", s);
+    else if (/\b\d{3}-\d{2}-\d{4}\b/.test(s)) add("SSN", s);
+    else if (/\b\d{1,2}[\/-]\d{1,2}[\/-](?:\d{2}|\d{4})\b/.test(s)) add("DOB", s);
+    else if (/\b(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]\d{4}\b/.test(s)) add("PHONE", s);
+    else if (/^[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})+$/.test(s)) add("NAME", s);
+  });
+
+  // order by severity
+  const order = ["SSN", "MRN", "EMAIL", "PHONE", "ADDRESS", "NAME", "DOB", "ZIP"];
+  const entries = Array.from(out.entries())
+    .sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
+
+  return entries.map(([type, set]) => ({ type, values: Array.from(set) }));
+};
+
 
 const Feed = () => {
 
@@ -505,18 +546,30 @@ useEffect(() => {
                 {/* ✅ Insert HIPAA Thermometer here */}
                 <HIPAAThermometer score={hipaaScore} status={hipaaStatus} />
 
-                {flaggedPhrases.length > 0 && (
-                    <div className="p-4 rounded-md bg-red-100 border border-red-400 text-red-700 mb-4">
-                        <p className="font-semibold">⚠️ Potential PHI Detected:</p>
-                        <ul className="list-disc list-inside">
-                            {flaggedPhrases.map((phrase, index) => (
-                                <li key={index}>{phrase}</li>
-                            ))}
-                        </ul>
+                {(() => {
+                  const detections = buildDetections(newReview, flaggedPhrases);
+                  if (detections.length === 0) return null;
+                  return (
+                    <div className="p-4 rounded-md bg-red-50 border border-red-300 text-red-800 mb-6">
+                      <p className="font-semibold mb-2">⚠️ Potential PHI Detected</p>
+                      <ul className="space-y-1">
+                        {detections.flatMap(({ type, values }) =>
+                          values.map((v, i) => (
+                            <li key={`${type}-${i}`}>
+                              <span className="font-semibold uppercase">{type}:</span>{" "}
+                              <span className="font-mono break-all">{v}</span>
+                            </li>
+                          ))
+                        )}
+                      </ul>
                     </div>
-                )}
+                  );
+                })()}
+
                 
-                <button onClick={handleAddReview} className="orange-btn mx-auto block"> {/* Centered button */}
+                <button 
+                  onClick={handleAddReview} 
+                  className="orange-btn mx-auto block mt-6"> {/* Centered button */}
                 Submit Tea
                 </button>
             </div>
